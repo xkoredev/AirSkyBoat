@@ -25,6 +25,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "../items/item_equipment.h"
 #include "../items/item_general.h"
 #include "../items/item_weapon.h"
+#include "../items/item_flowerpot.h"
 #include "../map.h"
 #include "../utils/itemutils.h"
 #include "common/logging.h"
@@ -294,6 +295,11 @@ uint8 CLuaItem::getAppraisalID()
 void CLuaItem::setAppraisalID(uint8 id)
 {
     m_PLuaItem->m_extra[0x16] = id;
+}
+
+void CLuaItem::setStage(FLOWERPOT_STAGE_TYPE stage)
+{
+    m_PLuaItem->m_extra[0x00] = stage
 }
 
 bool CLuaItem::isInstalled()

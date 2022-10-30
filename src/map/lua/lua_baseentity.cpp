@@ -3795,6 +3795,31 @@ std::optional<CLuaItem> CLuaBaseEntity::findItem(uint16 itemID, sol::object cons
 }
 
 /************************************************************************
+ *  Function: getItems()
+ *  Purpose : Returns all items matching the given item type, in the given container
+ *  Example : local items = player:getItems(xi.itemType.FURNISHING, xi.inv.MOGSAFE)
+ *  Notes   :
+ ************************************************************************/
+std::vector<CLuaItem> CLuaBaseEntity::getItems(ITEM_TYPE item_type, CONTAINER_ID containerID)
+{
+    XI_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_PC);
+
+    auto* PChar = dynamic_cast<CCharEntity*>(m_PBaseEntity);
+    std::vector<CLuaItem> items;
+    CItemContainer* PContainer = PChar->getStorage(containerID);
+    for (int slotID = 0; slotID < PContainer->GetSize(); ++slotID)
+    {
+        CItem* PItem = PContainer->GetItem(slotID);
+        if (PItem != nullptr && PItem->isType(item_type))
+        {
+            items.emplace_back(PItem);
+        }
+    }
+
+    return items;
+}
+
+/************************************************************************
  *  Function: createShop()
  *  Purpose : Create a temporary shop for display to a player
  *  Example : player:createShop(Size, Nation);
@@ -16138,5 +16163,3 @@ std::ostream& operator<<(std::ostream& os, const CLuaBaseEntity& entity)
 
     return os << "CLuaBaseEntity(nullptr)";
 }
-
-//==========================================================//

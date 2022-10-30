@@ -217,6 +217,7 @@ public:
     uint8  getWornUses(uint16 itemID);                                                      // Check if the item is already worn
     uint8  incrementItemWear(uint16 itemID);                                                // Increment the item's worn value and returns it
     auto   findItem(uint16 itemID, sol::object const& location) -> std::optional<CLuaItem>; // Like hasItem, but returns the item object (nil if not found)
+    std::vector<CLuaItem> getItems(ITEM_TYPE item_type, CONTAINER_ID containerID);
 
     void createShop(uint8 size, sol::object const& arg1);                                               // Prepare the container for work of shop ??
     void addShopItem(uint16 itemID, double rawPrice, sol::object const& arg2, sol::object const& arg3); // Adds item to shop container (16 max)

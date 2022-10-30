@@ -25,7 +25,9 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "common/cbasetypes.h"
 #include "luautils.h"
 
+enum FLOWERPOT_STAGE_TYPE;
 class CItem;
+
 class CLuaItem
 {
     CItem* m_PLuaItem;
@@ -80,6 +82,8 @@ public:
 
     uint8 getAppraisalID();         // get an appraisal ID
     void  setAppraisalID(uint8 id); // set an appraisal ID
+
+    void setStage(FLOWERPOT_STAGE_TYPE stage);
 
     bool isInstalled();
 
