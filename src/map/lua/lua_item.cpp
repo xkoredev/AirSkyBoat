@@ -297,9 +297,9 @@ void CLuaItem::setAppraisalID(uint8 id)
     m_PLuaItem->m_extra[0x16] = id;
 }
 
-void CLuaItem::setStage(FLOWERPOT_STAGE_TYPE stage)
+void CLuaItem::setStage(sol::object const& stage)
 {
-    m_PLuaItem->m_extra[0x00] = stage
+    m_PLuaItem->m_extra[0x00] = stage.get_type() == sol::type::number ? stage.as<FLOWERPOT_STAGE_TYPE>() : FLOWERPOT_STAGE_EMPTY;
 }
 
 bool CLuaItem::isInstalled()

@@ -3800,17 +3800,20 @@ std::optional<CLuaItem> CLuaBaseEntity::findItem(uint16 itemID, sol::object cons
  *  Example : local items = player:getItems(xi.itemType.FURNISHING, xi.inv.MOGSAFE)
  *  Notes   :
  ************************************************************************/
-std::vector<CLuaItem> CLuaBaseEntity::getItems(ITEM_TYPE item_type, CONTAINER_ID containerID)
+std::vector<CLuaItem> CLuaBaseEntity::getItems(sol::object const& itemType, sol::object const& containerID)
 {
     XI_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_PC);
 
+    CONTAINER_ID location = containerID.get_type() == sol::type::number ? containerID.as<CONTAINER_ID>() : LOC_INVENTORY;
+    ITEM_TYPE type = itemType.get_type() == sol::type::number ? itemType.as<ITEM_TYPE>() : ITEM_BASIC;
+
     auto* PChar = dynamic_cast<CCharEntity*>(m_PBaseEntity);
     std::vector<CLuaItem> items;
-    CItemContainer* PContainer = PChar->getStorage(containerID);
+    CItemContainer* PContainer = PChar->getStorage(location);
     for (int slotID = 0; slotID < PContainer->GetSize(); ++slotID)
     {
         CItem* PItem = PContainer->GetItem(slotID);
-        if (PItem != nullptr && PItem->isType(item_type))
+        if (PItem != nullptr && PItem->isType(type))
         {
             items.emplace_back(PItem);
         }
@@ -15449,6 +15452,7 @@ void CLuaBaseEntity::Register()
     SOL_REGISTER("getWornUses", CLuaBaseEntity::getWornUses);
     SOL_REGISTER("incrementItemWear", CLuaBaseEntity::incrementItemWear);
     SOL_REGISTER("findItem", CLuaBaseEntity::findItem);
+    SOL_REGISTER("getItems", CLuaBaseEntity::getItems);
 
     SOL_REGISTER("createShop", CLuaBaseEntity::createShop);
     SOL_REGISTER("addShopItem", CLuaBaseEntity::addShopItem);

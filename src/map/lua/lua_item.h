@@ -26,7 +26,6 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "luautils.h"
 
 class CItem;
-enum class FLOWERPOT_STAGE_TYPE;
 
 class CLuaItem
 {
@@ -83,7 +82,7 @@ public:
     uint8 getAppraisalID();         // get an appraisal ID
     void  setAppraisalID(uint8 id); // set an appraisal ID
 
-    void setStage(FLOWERPOT_STAGE_TYPE stage);
+    void setStage(sol::object const& stage);
 
     bool isInstalled();
 
