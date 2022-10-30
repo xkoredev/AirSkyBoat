@@ -35,6 +35,9 @@ class CLuaStatusEffect;
 class CLuaTradeContainer;
 class CLuaZone;
 
+enum class CONTAINER_ID;
+enum class ITEM_TYPE;
+
 class CLuaBaseEntity
 {
     CBaseEntity* m_PBaseEntity;

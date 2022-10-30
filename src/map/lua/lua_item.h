@@ -25,8 +25,8 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "common/cbasetypes.h"
 #include "luautils.h"
 
-enum FLOWERPOT_STAGE_TYPE;
 class CItem;
+enum class FLOWERPOT_STAGE_TYPE;
 
 class CLuaItem
 {
