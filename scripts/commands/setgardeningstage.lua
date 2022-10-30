@@ -1,5 +1,5 @@
 -----------------------------------
--- func: gardenstage
+-- func: setgardeningstage
 -- desc: Advances all planted flowerpots to the next stage
 -----------------------------------
 
