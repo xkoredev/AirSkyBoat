@@ -11,9 +11,9 @@ cmdprops =
     parameters = ""
 }
 
-function onTrigger(player, clearwardrobes, target)
-    moveToNextStage(target, xi.inv.MOGSAFE)
-    moveToNextStage(target, xi.inv.MOGSAFE2)
+function onTrigger(player)
+    moveToNextStage(player, xi.inv.MOGSAFE)
+    moveToNextStage(player, xi.inv.MOGSAFE2)
 
 end
 

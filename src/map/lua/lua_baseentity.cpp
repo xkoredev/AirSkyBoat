@@ -3815,7 +3815,7 @@ std::vector<CLuaItem> CLuaBaseEntity::getItems(sol::object const& itemType, sol:
         CItem* PItem = PContainer->GetItem(slotID);
         if (PItem != nullptr && PItem->isType(type))
         {
-            items.emplace_back(PItem);
+            items.emplace_back(CLuaItem(PItem));
         }
     }
 
