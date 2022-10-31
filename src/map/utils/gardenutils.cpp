@@ -35,9 +35,9 @@
 #define MAX_RESULTID 2500
 
 constexpr uint32 VANADAY_SECONDS            = 3456;
-constexpr uint32 VANADAYS_TO_WILT           = 36;
-constexpr uint32 VANADAYS_TO_GUARANTEE_WILT = 144;
-constexpr uint32 VANATIME_FOR_WILT_STAGE    = 65535 * VANADAY_SECONDS;
+//constexpr uint32 VANADAYS_TO_WILT           = 36;
+//constexpr uint32 VANADAYS_TO_GUARANTEE_WILT = 144;
+//constexpr uint32 VANATIME_FOR_WILT_STAGE    = 65535 * VANADAY_SECONDS;
 
 std::map<uint32, GardenResultList_t> g_pGardenResultMap; // global map of gardening results
 
@@ -95,22 +95,23 @@ namespace gardenutils
                 if (PItem != nullptr && PItem->isType(ITEM_FURNISHING))
                 {
                     CItemFlowerpot* PPotItem = static_cast<CItemFlowerpot*>(PItem);
-                    if (PPotItem != nullptr && PPotItem->canGrow() && vanatime >= PPotItem->getStageTimestamp())
+                    if (true || (PPotItem != nullptr && PPotItem->canGrow() && vanatime >= PPotItem->getStageTimestamp()))
                     {
-                        uint8  stageDuration        = GetStageDuration(PPotItem);
-                        uint32 daysSinceStageChange = (vanatime - PPotItem->getStageTimestamp()) / VANADAY_SECONDS;
-                        uint8  wiltTime             = VANADAYS_TO_WILT + PChar->getMod(Mod::GARDENING_WILT_BONUS);
-                        bool   wasExamined          = PPotItem->wasExamined();
-                        if ((!wasExamined && (stageDuration > wiltTime || (stageDuration + daysSinceStageChange > wiltTime))) ||
-                            daysSinceStageChange > VANADAYS_TO_GUARANTEE_WILT + wiltTime)
-                        {
-                            PPotItem->setStage(FLOWERPOT_STAGE_WILTED);
-                            PPotItem->setStageTimestamp(vanatime + VANATIME_FOR_WILT_STAGE);
-                        }
-                        else
-                        {
+//                        uint8  stageDuration        = GetStageDuration(PPotItem);
+//                        uint32 daysSinceStageChange = (vanatime - PPotItem->getStageTimestamp()) / VANADAY_SECONDS;
+//                        uint8  wiltTime             = VANADAYS_TO_WILT + PChar->getMod(Mod::GARDENING_WILT_BONUS);
+//                        bool   wasExamined          = PPotItem->wasExamined();
+//                        if ((!wasExamined && (stageDuration > wiltTime || (stageDuration + daysSinceStageChange > wiltTime))) ||
+//                            daysSinceStageChange > VANADAYS_TO_GUARANTEE_WILT + wiltTime)
+//                        {
+//                            PPotItem->setStage(FLOWERPOT_STAGE_WILTED);
+//                            PPotItem->setStageTimestamp(vanatime + VANATIME_FOR_WILT_STAGE);
+//                        }
+//                        else
+//                        {
+                          if (PPotItem->getStage() != FLOWERPOT_STAGE_MATURE_PLANT) {
                             GrowToNextStage(PPotItem);
-                        }
+                          }
 
                         PPotItem->clearExamined();
 
@@ -254,10 +255,11 @@ namespace gardenutils
                     CItem* PItemContained = PContainer->GetItem(slotID);
                     if (PItemContained != nullptr && PItemContained->isType(ITEM_FURNISHING))
                     {
-                        CItemFurnishing* PFurniture = static_cast<CItemFurnishing*>(PItemContained);
-                        if (PFurniture->isInstalled())
-                        {
-                            auras[PFurniture->getElement()] += PFurniture->getAura();
+                        if (auto* PFurniture = dynamic_cast<CItemFurnishing*>(PItemContained)) {
+                            if (PFurniture->isInstalled())
+                            {
+                                auras[PFurniture->getElement()] += PFurniture->getAura();
+                            }
                         }
                     }
                 }
