@@ -293,7 +293,7 @@ namespace gardenutils
                 break;
             }
         }
-        if (item.ItemID == 0)
+        if (item.ItemID == 0 && resultList.size() > 0)
         {
             item = resultList.back();
         }
