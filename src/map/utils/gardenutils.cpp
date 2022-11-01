@@ -85,18 +85,23 @@ namespace gardenutils
     void UpdateGardening(CCharEntity* PChar, bool sendPacket)
     {
         TracyZoneScoped;
-        uint32 vanatime = CVanaTime::getInstance()->getVanaTime();
+        // uint32 vanatime = CVanaTime::getInstance()->getVanaTime();
+        ShowDebug("Start gardening");
         for (auto containerID : { LOC_MOGSAFE, LOC_MOGSAFE2 })
         {
             CItemContainer* PContainer = PChar->getStorage(containerID);
             for (int slotID = 0; slotID < PContainer->GetSize(); ++slotID)
             {
+                ShowDebug("slot: %d", slotID);
                 CItem* PItem = PContainer->GetItem(slotID);
                 if (PItem != nullptr && PItem->isType(ITEM_FURNISHING))
                 {
+                    ShowDebug("Flowerpot");
                     CItemFlowerpot* PPotItem = static_cast<CItemFlowerpot*>(PItem);
-                    if (true || (PPotItem != nullptr && PPotItem->canGrow() && vanatime >= PPotItem->getStageTimestamp()))
+                    // if (true || (PPotItem != nullptr && PPotItem->canGrow() && vanatime >= PPotItem->getStageTimestamp()))
+                    if (PPotItem != nullptr && PPotItem->canGrow())
                     {
+                          ShowDebug("Can grow");
 //                        uint8  stageDuration        = GetStageDuration(PPotItem);
 //                        uint32 daysSinceStageChange = (vanatime - PPotItem->getStageTimestamp()) / VANADAY_SECONDS;
 //                        uint8  wiltTime             = VANADAYS_TO_WILT + PChar->getMod(Mod::GARDENING_WILT_BONUS);
@@ -110,6 +115,7 @@ namespace gardenutils
 //                        else
 //                        {
                           if (PPotItem->getStage() != FLOWERPOT_STAGE_MATURE_PLANT) {
+                            ShowDebug("Next stage");
                             GrowToNextStage(PPotItem);
                           }
 
@@ -132,6 +138,7 @@ namespace gardenutils
 
     std::tuple<uint16, uint8> CalculateResults(CCharEntity* PChar, CItemFlowerpot* PItem)
     {
+        ShowDebug("A");
         std::array<uint8, 9> elements = { 0 };
         elements[PItem->getCommonCrystalFeed()] += 10;
         if (PItem->isTree())
@@ -139,6 +146,7 @@ namespace gardenutils
             elements[PItem->getExtraCrystalFeed()] += 10;
         }
 
+        ShowDebug("B");
         switch (PItem->getPlant())
         {
             case FLOWERPOT_PLANT_HERB_SEEDS:
@@ -169,6 +177,7 @@ namespace gardenutils
                 elements[FLOWERPOT_ELEMENT_NONE] += 10;
         }
 
+        ShowDebug("C");
         if (settings::get<bool>("map.GARDEN_DAY_MATTERS"))
         {
             uint32 vanaDate   = PItem->getPlantTimestamp();
@@ -176,6 +185,7 @@ namespace gardenutils
             elements[dayElement] += 10;
         }
 
+        ShowDebug("D");
         if (settings::get<bool>("map.GARDEN_POT_MATTERS"))
         {
             switch (PItem->getID())
@@ -203,6 +213,7 @@ namespace gardenutils
             }
         }
 
+        ShowDebug("E");
         int16 strength = 0;
         if (PItem->getCommonCrystalFeed() == FLOWERPOT_ELEMENT_NONE)
         {
@@ -218,6 +229,8 @@ namespace gardenutils
         {
             strength = elements[PItem->getCommonCrystalFeed()];
         }
+
+        ShowDebug("F");
         if (PItem->isTree())
         {
             if (PItem->getExtraCrystalFeed() == FLOWERPOT_ELEMENT_NONE)
@@ -238,11 +251,13 @@ namespace gardenutils
             }
         }
 
+        ShowDebug("G");
         if (settings::get<bool>("map.GARDEN_MOONPHASE_MATTERS"))
         {
             strength += (int16)std::ceil(CVanaTime::getInstance()->getMoonPhase() / 10.0f);
         }
 
+        ShowDebug("H");
         if (settings::get<bool>("map.GARDEN_MH_AURA_MATTERS"))
         {
             // Add up all of the installed furniture auras
@@ -265,6 +280,7 @@ namespace gardenutils
                 }
             }
 
+            ShowDebug("I");
             // Determine the dominant aura
             uint16 dominantAura = 0;
             for (uint8 elementID = 0; elementID < 8; ++elementID)
@@ -277,6 +293,7 @@ namespace gardenutils
             strength += dominantAura / 10;
         }
 
+        ShowDebug("J");
         strength += (int16)((100 - strength) * (PItem->getStrength() / 32.0f));
 
         uint32 resultUid = (PItem->getPlant() << 8) + (PItem->getCommonCrystalFeed() << 4) + PItem->getExtraCrystalFeed();
@@ -284,6 +301,7 @@ namespace gardenutils
         GardenResult_t      item;
         int8                cumulativeWeight = 0;
         GardenResultList_t& resultList       = g_pGardenResultMap[resultUid];
+        ShowDebug("K");
         for (GardenResult_t& result : resultList)
         {
             cumulativeWeight += result.Weight;
@@ -293,14 +311,17 @@ namespace gardenutils
                 break;
             }
         }
+        ShowDebug("L");
         if (item.ItemID == 0 && resultList.size() > 0)
         {
             item = resultList.back();
         }
 
+        ShowDebug("M");
         float percentage = (strength - (cumulativeWeight - item.Weight)) / float(item.Weight);
         uint8 quantity   = item.MinQuantity + int((item.MaxQuantity - item.MinQuantity) * percentage + 0.1);
 
+        ShowDebug("N");
         return std::make_tuple(item.ItemID, quantity);
     }
 
