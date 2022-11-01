@@ -92,7 +92,6 @@ namespace gardenutils
             CItemContainer* PContainer = PChar->getStorage(containerID);
             for (int slotID = 0; slotID < PContainer->GetSize(); ++slotID)
             {
-                ShowDebug("slot: %d", slotID);
                 CItem* PItem = PContainer->GetItem(slotID);
                 if (PItem != nullptr && PItem->isType(ITEM_FURNISHING))
                 {
