@@ -90,12 +90,12 @@ namespace gardenutils
         for (auto containerID : { LOC_MOGSAFE, LOC_MOGSAFE2 })
         {
             CItemContainer* PContainer = PChar->getStorage(containerID);
+            ShowDebug("Flowerpots");
             for (int slotID = 0; slotID < PContainer->GetSize(); ++slotID)
             {
                 CItem* PItem = PContainer->GetItem(slotID);
                 if (PItem != nullptr && PItem->isType(ITEM_FURNISHING))
                 {
-                    ShowDebug("Flowerpot");
                     CItemFlowerpot* PPotItem = static_cast<CItemFlowerpot*>(PItem);
                     // if (true || (PPotItem != nullptr && PPotItem->canGrow() && vanatime >= PPotItem->getStageTimestamp()))
                     if (PPotItem != nullptr && PPotItem->canGrow())
@@ -269,11 +269,18 @@ namespace gardenutils
                     CItem* PItemContained = PContainer->GetItem(slotID);
                     if (PItemContained != nullptr && PItemContained->isType(ITEM_FURNISHING))
                     {
+                        /*
                         if (auto* PFurniture = dynamic_cast<CItemFurnishing*>(PItemContained)) {
                             if (PFurniture->isInstalled())
                             {
                                 auras[PFurniture->getElement()] += PFurniture->getAura();
                             }
+                        }
+                        */ 
+                        CItemFurnishing* PFurniture = static_cast<CItemFurnishing*>(PItemContained);
+                        if (PFurniture->isInstalled())
+                        {
+                            auras[PFurniture->getElement()] += PFurniture->getAura();
                         }
                     }
                 }
