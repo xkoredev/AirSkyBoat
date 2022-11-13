@@ -16,12 +16,14 @@ xi.garrison.lookup = xi.garrison.lookup or {}
 
 xi.garrison.state =
 {
-    INACTIVE   = 0,
-    SPAWN_NPCS = 1,
-    WAITING    = 2,
-    SPAWN_MOBS = 3,
-    ACTIVE     = 4,
-    ENDED      = 5,
+    INACTIVE            = 0,
+    SPAWN_NPCS          = 1,
+    BATTLE              = 2,
+    CHECK_WAVE_PROGRESS = 3,
+    SPAWN_MOBS          = 4,
+    SPAWN_BOSS          = 5,
+    GRANT_LOOT          = 6,
+    ENDED               = 7,
 }
 
 -----------------------------------
@@ -93,6 +95,26 @@ xi.garrison.loot =
         { itemId = xi.items.MIGHTY_PATAS,      dropRate = 350  },
         { itemId = xi.items.MIGHTY_SWORD,      dropRate = 350  },
     },
+}
+
+-- Defines the structure of each wave and the wave count
+-- groupsPerWave: How many groups of mobs spawn for each wave.
+-- mobsPerGroup: How many mobs spawn per group. Each wave consists of different
+-- 'mini waves', which are separated from each other by a certain interval of time.
+-- delayBetweenGroups: How many seconds before each group spawns.
+-- After all groups in a wave are killed, the wave ends and after delayBetweenGroups,
+-- the next wave begins.
+-- Constraints: A wave can only spawn 8 mobs at a time at most. This is due to the assumption
+-- That the boss is always 8 IDs after the mobs spawning in each wave.
+-- e.g:
+-- Wave 2 contains 2 groups. Each group has 2 mobs and 15 second between group.
+-- 2 mobs will spawn initially, then 15 seconds later 2 new mobs will spawn.
+xi.garrison.waves =
+{
+    -- The last wave is a special case. It's 4 groups + Boss
+    groupsPerWave = { 1, 2, 3, 4 },
+    mobsPerGroup = 2,
+    delayBetweenGroups = 15
 }
 
 -- Zone Data, used for the spawning of enemies and allies
@@ -421,6 +443,32 @@ local allyLooks =
 -- Helpers
 -----------------------------------
 
+-- Prints the given message if DEBUG_GARRISON is enabled
+local debugLog = function(msg)
+    if xi.settings.main.DEBUG_GARRISON then
+        print(msg)
+    end
+end
+
+-- Prints the given message with printf if DEBUG_GARRISON is enabled
+local debugLogf = function(msg, ...)
+    if xi.settings.main.DEBUG_GARRISON then
+        printf(msg, ...)
+    end
+end
+
+-- Shows the given server message to all players if DEBUG_GARRISON is enabled
+local debugPrintToPlayers = function(zoneData, msg)
+    if xi.settings.main.DEBUG_GARRISON then
+        for _, entityId in pairs(zoneData.players) do
+            local entity = GetPlayerByID(entityId)
+            if entity ~= nil then
+                entity:PrintToPlayer(msg)
+            end
+        end
+    end
+end
+
 -- Add level restriction effect
 -- If a party member is KO'd during the Garrison, they're out.
 -- Any players that are KO'd lose their level restriction and will be unable to help afterward.
@@ -439,6 +487,7 @@ local addLevelCap = function(entity, cap)
         xi.effectFlag.DEATH + xi.effectFlag.ON_ZONE + xi.effectFlag.CONFRONTATION)
 end
 
+-- Randomly assigns aggro between the given groups of entity IDs
 local aggroGroups = function(group1, group2)
     for _, id1 in pairs(group1) do
         for _, id2 in pairs(group2) do
@@ -448,6 +497,8 @@ local aggroGroups = function(group1, group2)
     end
 end
 
+-- Spawns and npc for the given zone and with the given name, look, pose
+-- Uses dynamic entities
 local spawnNPC = function(zone, x, y, z, rot, name, look)
     local mob = zone:insertDynamicEntity({
         objtype = xi.objType.MOB,
@@ -485,6 +536,7 @@ local spawnNPC = function(zone, x, y, z, rot, name, look)
     return mob
 end
 
+-- Spawns all npcs for the zone in the given garrison starting npc
 local spawnNPCs = function(npc)
     local zone     = npc:getZone()
     local zoneData = xi.garrison.data[zone:getID()]
@@ -492,9 +544,18 @@ local spawnNPCs = function(npc)
     local yPos     = zoneData.yPos
     local zPos     = zoneData.zPos
     local rot      = zoneData.rot
+
+    -- There's a bug on first time zone load where these allies array are null for some reason.
+    -- Since they are all the same for all zones, this is fine but we should really
+    -- find out why that's happening.
+    if zoneData.allies == nil then
+        print("[error] Allies array is nil. Will use default values.")
+        zoneData.allies = { "Trader", "Patrician", "Scholar" }
+    end
     local allyName = zoneData.allies[GetRegionOwner(zone:getRegionID()) + 1]
 
-    for i = 0, math.random(2, 6) do
+    -- Spawn 1 npc per player in alliance
+    for i = 1, #zoneData.players do
         local mob = spawnNPC(zone, xPos, yPos, zPos, rot, allyName, utils.randomEntry(allyLooks[allyName]))
         mob:setMobLevel(zoneData.levelCap - math.floor(zoneData.levelCap / 5))
         addLevelCap(mob, zoneData.levelCap)
@@ -513,6 +574,53 @@ local spawnNPCs = function(npc)
     end
 end
 
+-- Given a starting mobID, return the list of randomly selected
+-- mob ids. The amount of mobs selected is determined by numMobs.
+-- The ids in the given excludedMobs table will not be included in the result.
+-- This method assumes that the mob pool is composed by mobIDs
+-- that are sequential between firstMobID and lastMobID
+-- e.g: If firstMobId = 1, lastMobID = 4 and numMobs is 2,
+-- Then 2 ids randomly selected between { 1, 2, 3, 4 } will be returned
+-- without repetitions.
+local pickMobsFromPool = function(firstMobID, lastMobID, numMobs, excludedMobIDs)
+    -- unfiltered pool, from first to last mob id (inclusive)
+    local unfilteredPool = utils.range(firstMobID, lastMobID)
+
+    -- filter the pool, removing excludedMobIDs
+    local pool = {}
+    local excludedSet = set(excludedMobIDs)
+    for i, v in ipairs(unfilteredPool) do
+        if not excludedSet[v] then
+            table.insert(pool, v)
+        end
+    end
+
+    -- validate input
+    local mobs = {}
+    if numMobs > #pool then
+        printf("[warning] pickMobsFromPool called with numMobs > mobIds. Num Mobs: %i. Pool size: %i", numMobs, #pool)
+        numMobs = #pool
+    end
+
+    if numMobs <= 0 then
+        printf("[error] Invalid numMobs picked. Should be > 0.")
+        return {}
+    end
+
+    -- Now we can apply a common algorithm used to "shuffle a deck of cards"
+    for i = 1, numMobs do
+        -- Pick random index from J to pool end. Add the picked element to result
+        local pickedIndex = math.random(i, #pool)
+        table.insert(mobs, pool[pickedIndex])
+
+        -- Now swap the picked element with the first element of the array.
+        -- This effectively makes the picked element not elegible for future picks.
+        pool[pickedIndex], pool[i] = pool[i], pool[pickedIndex]
+    end
+
+    return mobs
+end
+
 -----------------------------------
 -- Main Functions
 -----------------------------------
@@ -525,7 +633,7 @@ xi.garrison.tick = function(npc)
     switch (zoneData.state) : caseof
     {
         [xi.garrison.state.INACTIVE] = function()
-            -- print("State: Inactive")
+            debugLog("State: Inactive")
             local time = os.time()
             if time > zoneData.stateTime + 2 then
                 zoneData.stateTime = time
@@ -534,44 +642,15 @@ xi.garrison.tick = function(npc)
         end,
 
         [xi.garrison.state.SPAWN_NPCS] = function()
-            -- print("State: Spawn NPCs")
+            debugLog("State: Spawn NPCs")
             spawnNPCs(npc)
 
             zoneData.stateTime = os.time()
-            zoneData.state = xi.garrison.state.WAITING
+            zoneData.state = xi.garrison.state.BATTLE
         end,
 
-        [xi.garrison.state.WAITING] = function()
-            -- print("State: Waiting")
-
-            local time = os.time()
-            if time > zoneData.stateTime + 2 then
-                zoneData.stateTime = time
-                zoneData.state = xi.garrison.state.SPAWN_MOBS
-            end
-        end,
-
-        [xi.garrison.state.SPAWN_MOBS] = function()
-            -- print("State: Spawn Mobs")
-            -- TODO: There is a delay before the mobs spawn
-            -- There are always 8 mobs + 1 boss for Garrison, so we will look up the
-            -- boss's ID using their name and then subtract 8 to get the starting mob ID.
-            local firstMobID = zone:queryEntitiesByName(zoneData.mobBoss)[1]:getID() - 8
-            for id = firstMobID, firstMobID do
-                local mob = SpawnMob(id)
-                addLevelCap(mob, zoneData.levelCap)
-                mob:setRoamFlags(xi.roamFlag.SCRIPTED)
-                table.insert(zoneData.mobs, mob:getID())
-            end
-
-            -- Once the mobs are spawned, make them aggro whatever NPCs are already up
-            aggroGroups(zoneData.mobs, zoneData.npcs)
-
-            zoneData.state = xi.garrison.state.ACTIVE
-        end,
-
-        [xi.garrison.state.ACTIVE] = function()
-            -- print("State: Active")
+        [xi.garrison.state.BATTLE] = function()
+            debugLog("State: Battle")
             local allNPCsDead = true
             for _, entityId in pairs(zoneData.npcs) do
                 -- TODO: Don't use GetMobByID here
@@ -596,46 +675,146 @@ xi.garrison.tick = function(npc)
                 -- TODO: Don't use GetMobByID here
                 -- Keep a table with { bool: alive/dead, mob object } entries
                 local entity = GetMobByID(entityId)
-                if entity and entity:isAlive() then
+                -- A wave is considered complete when all mobs are done despawning
+                -- and not just dead. This matters a lot because of spawn timings.
+                -- I.e: If mob A dies on wave 1, and another instance of mob A is supposed
+                -- to spawn on wave 2, it will not spawn as long as the previous mob is still
+                -- despawning
+                if entity and entity:isSpawned() then
                     allMobsDead = false
                 end
             end
 
-            if
-                allNPCsDead or
-                allPlayersDead or
-                allMobsDead
-            then
-                -- TODO: Only check valid players
-                for _, entityId in pairs(zoneData.players) do
-                    local entity = GetPlayerByID(entityId)
-                    entity:delStatusEffect(xi.effect.LEVEL_RESTRICTION)
-                end
-
-                for _, entityId in pairs(zoneData.npcs) do
-                    DespawnMob(entityId)
-                end
-
-                for _, entityId in pairs(zoneData.mobs) do
-                    DespawnMob(entityId)
-                end
-
+            -- case 1: Either npcs or players are dead. End event.
+            if allNPCsDead or allPlayersDead then
+                debugPrintToPlayers(zoneData, "Mission failed")
                 zoneData.state = xi.garrison.state.ENDED
+                return
+            end
+
+            -- case 2: More mobs to spawn in this wave, and past next spawn time. Spawn Mobs.
+            local shouldSpawnMobs = os.time() >= zoneData.nextSpawnTime
+            local isLastGroup = zoneData.groupIndex > xi.garrison.waves.groupsPerWave[zoneData.waveIndex]
+            if shouldSpawnMobs and not isLastGroup then
+                zoneData.state = xi.garrison.state.SPAWN_MOBS
+                return
+            end
+
+            -- case 3: All mobs spawned for last wave. Spawn boss
+            local isLastWave = zoneData.waveIndex == #xi.garrison.waves.groupsPerWave
+            if shouldSpawnMobs and isLastWave and isLastGroup and not zoneData.bossSpawned then
+                zoneData.state = xi.garrison.state.SPAWN_BOSS
+                return
+            end
+
+            -- case 4: All Mobs dead and this was last group. Check if we advance to next wave
+            if allMobsDead and zoneData.groupIndex > xi.garrison.waves.groupsPerWave[zoneData.waveIndex] then
+                zoneData.state = xi.garrison.state.CHECK_WAVE_PROGRESS
             end
         end,
 
+        [xi.garrison.state.SPAWN_BOSS] = function()
+            debugLog("State: Spawn Boss")
+            debugPrintToPlayers(zoneData, "Spawning boss")
+
+            local bossID = zone:queryEntitiesByName(zoneData.mobBoss)[1]:getID()
+            local mob = SpawnMob(bossID)
+            if mob == nil then
+                print("[error] Could not spawn boss (%i). Ending garrison.", bossID)
+                zoneData.state = xi.garrison.state.ENDED
+                return
+            end
+
+            addLevelCap(mob, zoneData.levelCap)
+            mob:setRoamFlags(xi.roamFlag.SCRIPTED)
+            table.insert(zoneData.mobs, mob:getID())
+
+            -- Once the boss is spawned, make it aggro whatever NPCs are already up
+            aggroGroups({ mob:getID() }, zoneData.npcs)
+            zoneData.bossSpawned = true
+            zoneData.state = xi.garrison.state.BATTLE
+        end,
+
+        [xi.garrison.state.CHECK_WAVE_PROGRESS] = function()
+            debugLog("State: Check Wave Progress")
+            debugLogf("Wave Idx: %i. Waves: %i", zoneData.waveIndex, #xi.garrison.waves.groupsPerWave)
+            -- Check if this was the last wave (and boss is dead)
+            if zoneData.waveIndex >= #xi.garrison.waves.groupsPerWave and zoneData.bossSpawned then
+                debugPrintToPlayers(zoneData, "Mission success")
+                zoneData.state = xi.garrison.state.GRANT_LOOT
+                return
+            end
+
+            -- Advance to next wave and back to battle state
+            debugLogf("Next wave: %i", zoneData.waveIndex)
+            debugPrintToPlayers(zoneData, "Wave " .. zoneData.waveIndex .. " cleared")
+            zoneData.waveIndex = zoneData.waveIndex + 1
+            zoneData.groupIndex = 1
+            zoneData.nextSpawnTime = os.time() + xi.garrison.waves.delayBetweenGroups
+            zoneData.state = xi.garrison.state.BATTLE
+            zoneData.mobs = {}
+        end,
+
+        [xi.garrison.state.SPAWN_MOBS] = function()
+            debugLog("State: Spawn Mobs")
+            debugPrintToPlayers(zoneData, "Spawning mobs")
+
+            -- There are always at most 8 mobs + 1 boss for Garrison, so we will look up the
+            -- boss's ID using their name and then subtract 8 to get the starting mob ID.
+            local firstMobID = zone:queryEntitiesByName(zoneData.mobBoss)[1]:getID() - 8
+            local numMobs = xi.garrison.waves.mobsPerGroup
+            local poolSize = xi.garrison.waves.mobsPerGroup * xi.garrison.waves.groupsPerWave[zoneData.waveIndex]
+            local lastMobID = firstMobID + poolSize - 1
+
+            local mobIDs = pickMobsFromPool(firstMobID, lastMobID, numMobs, zoneData.mobs)
+
+            for _, mobID in ipairs(mobIDs) do
+                local mob = SpawnMob(mobID)
+                if mob ~= nil then
+                    addLevelCap(mob, zoneData.levelCap)
+                    mob:setRoamFlags(xi.roamFlag.SCRIPTED)
+                    table.insert(zoneData.mobs, mob:getID())
+                end
+            end
+
+            -- Once the mobs are spawned, make them aggro whatever NPCs are already up
+            aggroGroups(zoneData.mobs, zoneData.npcs)
+
+            zoneData.nextSpawnTime = os.time() + xi.garrison.waves.delayBetweenGroups
+            zoneData.state = xi.garrison.state.BATTLE
+            zoneData.groupIndex = zoneData.groupIndex + 1
+        end,
+
+        [xi.garrison.state.GRANT_LOOT] = function()
+            debugLog("State: Grant Loot")
+            debugPrintToPlayers(zoneData, "TODO: Loot")
+            zoneData.state = xi.garrison.state.ENDED
+        end,
+
         [xi.garrison.state.ENDED] = function()
-            -- print("State: Ended")
+            debugLog("State: Ended")
+            -- TODO: Only check valid players
+            for _, entityId in pairs(zoneData.players) do
+                local entity = GetPlayerByID(entityId)
+                if entity ~= nil then
+                    entity:delStatusEffect(xi.effect.LEVEL_RESTRICTION)
+                end
+            end
+
+            for _, entityId in pairs(zoneData.npcs) do
+                DespawnMob(entityId)
+            end
+
+            for _, entityId in pairs(zoneData.mobs) do
+                DespawnMob(entityId)
+            end
+
             zoneData.continue = false
         end,
     }
 
-    -- TODO: Check to see if current wave is complete
-
-    -- TODO: Check to if all waves are completed
-
     if zoneData.continue then
-        npc:timer(2000, function(npcArg)
+        npc:timer(1000, function(npcArg)
             xi.garrison.tick(npcArg)
         end)
     end
@@ -652,6 +831,11 @@ xi.garrison.start = function(player, npc)
     zoneData.state     = xi.garrison.state.INACTIVE
     zoneData.continue  = true
     zoneData.stateTime = os.time()
+    zoneData.waveIndex = 1
+    zoneData.groupIndex = 1
+    zoneData.bossSpawned = false
+    -- First mob spawn takes xi.garrison.waves.delayBetweenGroups to start
+    zoneData.nextSpawnTime = os.time() + xi.garrison.waves.delayBetweenGroups
 
     for _, member in pairs(player:getAlliance()) do
         addLevelCap(member, zoneData.levelCap)
