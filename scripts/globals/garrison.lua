@@ -33,14 +33,14 @@ xi.garrison.state =
 -- Prints the given message if DEBUG_GARRISON is enabled
 local debugLog = function(msg)
     if xi.settings.main.DEBUG_GARRISON then
-        print(msg)
+        print("[Garrison]: " .. msg)
     end
 end
 
 -- Prints the given message with printf if DEBUG_GARRISON is enabled
 local debugLogf = function(msg, ...)
     if xi.settings.main.DEBUG_GARRISON then
-        printf(msg, ...)
+        printf("[Garrison]: " .. msg, ...)
     end
 end
 
@@ -418,8 +418,6 @@ xi.garrison.tick = function(npc)
 end
 
 xi.garrison.start = function(player, npc)
-    -- TODO: Write lockout information to player
-
     local zone           = player:getZone()
     local zoneData       = xi.garrison.zoneData[zone:getID()]
     zoneData.players     = {}
@@ -437,9 +435,14 @@ xi.garrison.start = function(player, npc)
     zoneData.deadMobCount      = 0
     zoneData.despawnedMobCount = 0
 
+    -- Adds level cap / registers lockout for all players
     for _, member in pairs(player:getAlliance()) do
-        xi.garrison.addLevelCap(member, zoneData.levelCap)
-        table.insert(zoneData.players, member:getID())
+        if member:getZoneID() == player:getZoneID() then
+            xi.garrison.addLevelCap(member, zoneData.levelCap)
+            xi.garrison.registerPlayerEntry(member)
+
+            table.insert(zoneData.players, member:getID())
+        end
     end
 
     -- The starting NPC is the 'anchor' for all timers and logic for this Garrison
@@ -448,14 +451,16 @@ end
 
 xi.garrison.onTrade = function(player, npc, trade, guardNation)
     if not xi.settings.main.ENABLE_GARRISON then
+        debugLog("Garrison not enabled. Set ENABLE_GARRISON if desired.")
         return false
     end
 
-    -- TODO: If there is currently an active Garrison, bail out now
-
     local zoneData = xi.garrison.zoneData[player:getZoneID()]
     if npcUtil.tradeHasExactly(trade, zoneData.itemReq) then
-        -- TODO: Check lockout
+        if not xi.garrison.validateEntry(zoneData, player, npc, guardNation) then
+            debugLog("Player does not meet entry requirements")
+            return false
+        end
 
         -- Start CS
         player:startEvent(32753 + player:getNation())
@@ -476,6 +481,7 @@ end
 
 xi.garrison.onEventFinish = function(player, csid, option, guardNation, guardType, guardRegion)
     if not xi.settings.main.ENABLE_GARRISON then
+        debugLog("Garrison not enabled. Set ENABLE_GARRISON if desired.")
         return false
     end
 
@@ -517,4 +523,104 @@ xi.garrison.handleLootRolls = function(lootTable, players)
             break
         end
     end
+end
+
+-----------------------------------
+-- Entry
+-----------------------------------
+
+-- Validates that the player meets the requirements to enter garrison:
+-- * Another garrison is not currently active
+-- * Outpost is controlled by the player's nation, or GARRISON_NATION_BYPASS setting is true
+-- * No player in the alliance (in zone) is level synced
+-- * Player hasn't entered garrison since last tally, or GARRISON_ONCE_PER_WEEK setting is false
+-- * Player has not finished a garrison since in the last GARRISON_LOCKOUT seconds
+-- * Player does not have more than GARRISON_PARTY_LIMIT alliance memebrs
+-- * Player is at least at GARRISON_RANK rank level
+xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
+    if zoneData.continue then
+        debugLog("Another garrison in progress")
+        player:messageText(npc, ID.text.GARRISON_BASE + 1)
+        return false
+    end
+
+    -- This assumes that only the player trading the item has to be from the right nation
+    local ID = zones[player:getZoneID()]
+    if xi.settings.main.GARRISON_NATION_BYPASS == false and guardNation ~= player:getNation() then
+        debugLog("Outpost not controller by player's nation")
+        print(zoneData.itemReq)
+        player:messageSpecial(ID.text.GARRISON_BASE + player:getNation(), zoneData.itemReq)
+        return false
+    end
+
+    -- Level sync check
+    if utils.any(zoneData.players, function(_, v) return v:isLevelSync() end) then
+        debugLog("Your party is unable to participate because certain members' levels are restricted")
+        player:messageText(npc, ID.text.MEMBERS_LEVELS_ARE_RESTRICTED, false)
+        return false
+    end
+
+    if utils.sum(zoneData.players, function(k, v) return 1 end) > xi.settings.main.GARRISON_PARTY_LIMIT then
+        debugLogf("Alliance exceeds member limit: %d", xi.settings.main.GARRISON_PARTY_LIMIT)
+        return false;
+    end
+
+    local meetsRank = function(_, v) return v:getRank(v:getNation()) >= xi.settings.main.GARRISON_RANK end
+    if utils.any(zoneData.players, not meetsRank) then
+        debugLogf("Leader does not meet required rank: %d", xi.settings.main.GARRISON_RANK)
+        return false;
+    end
+
+    if xi.garrison.isAnyPlayerOnEntryCooldown(zoneData.players) then
+        debugLogf("Alliance members on cooldown")
+        return false;
+    end
+
+    return true
+end
+
+-- Returns true if any member of the player's alliance in zone is level synced
+xi.garrison.isAnyAllianceMemberLevelSynced = function(players)
+    for _, member in pairs(players) do
+        if member:isLevelSync() then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Returns true if there are at most GARRISON_PARTY_LIMIT in the player's alliance
+-- that are in zone
+xi.garrison.allianceMeetsMemberLimit = function(players)
+    local numMembers = 0
+    for _, member in pairs(players) do
+        numMembers = numMembers + 1
+    end
+
+    return numMembers <= xi.settings.main.GARRISON_PARTY_LIMIT
+end
+
+-- Returns true if any player in the given table has entered garrison too recently
+-- according to the GARRISON_LOCKOUT and GARRISON_ONCE_PER_WEEK settings
+-- and their last entry time
+xi.garrison.isAnyPlayerOnEntryCooldown = function(players)
+    for _, player in pairs(players) do
+        local nextValidAttemptTime = player:getCharVar("[Garrison]NextEntryTime")
+        if os.time() < nextValidAttemptTime then
+            return true
+        end
+    end
+
+    return false
+end
+
+-- Stores data related to player entry time / lockout
+xi.garrison.registerPlayerEntry = function(player)
+    local nextEntryTime = os.time() + xi.main.GARRISON_LOCKOUT
+    if xi.main.GARRISON_ONCE_PER_WEEK then
+        nextEntryTime = math.max(nextEntryTime, getConquestTally())
+    end
+
+    player:setCharVar("[Garrison]NextEntryTime", nextEntryTime)
 end
