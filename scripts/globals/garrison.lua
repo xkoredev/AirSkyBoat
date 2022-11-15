@@ -553,7 +553,6 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
         return false
     end
 
-    -- Level sync check
     if utils.any(zoneData.players, function(_, v) return v:isLevelSync() end) then
         debugLog("Your party is unable to participate because certain members' levels are restricted")
         player:messageText(npc, ID.text.MEMBERS_LEVELS_ARE_RESTRICTED, false)
@@ -577,28 +576,6 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
     end
 
     return true
-end
-
--- Returns true if any member of the player's alliance in zone is level synced
-xi.garrison.isAnyAllianceMemberLevelSynced = function(players)
-    for _, member in pairs(players) do
-        if member:isLevelSync() then
-            return true
-        end
-    end
-
-    return false
-end
-
--- Returns true if there are at most GARRISON_PARTY_LIMIT in the player's alliance
--- that are in zone
-xi.garrison.allianceMeetsMemberLimit = function(players)
-    local numMembers = 0
-    for _, member in pairs(players) do
-        numMembers = numMembers + 1
-    end
-
-    return numMembers <= xi.settings.main.GARRISON_PARTY_LIMIT
 end
 
 -- Returns true if any player in the given table has entered garrison too recently
