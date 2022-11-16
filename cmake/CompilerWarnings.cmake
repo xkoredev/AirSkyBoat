@@ -111,4 +111,9 @@ function(set_project_warnings project_name)
   endif()
 
   target_compile_options(${project_name} INTERFACE ${ERRORS} ${PROJECT_WARNINGS})
+
+  # Enable Thin LTO only on non-test targets.
+    target_compile_options(${project_name} INTERFACE -fno-lto)
+    # Probably pointless.
+    target_link_options(${project_name} INTERFACE -fno-lto)
 endfunction() #set_project_warnings

@@ -76,5 +76,56 @@
             "justMyCode": true,
             "cwd": "${fileDirname}"
         },
+        {
+            "name": "(gdb) xi_map",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/xi_map",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/local/bin/gdb",
+            "targetArchitecture": "x64",
+            /*
+            "logging": {
+                "engineLogging": true,
+                "traceResponse": true
+             },*/
+            "sourceFileMap": {
+                "/Users/dcasadevallpino/Github/kore/AirSkyBoat": {
+                "editorPath" : "/Users/dcasadevallpino/Github/kore/AirSkyBoat",
+                "useForBreakpoints" : true
+                },
+            }
+        },
+        {
+            "name": "(lldb) xi_map",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/xi_map",
+            // "preLaunchTask": "CMake Build",
+            "args": ["-g"],
+            "cwd": "${workspaceFolder}",
+            "MIMode": "lldb",
+            "targetArchitecture": "x64",
+            /*
+            "logging": {
+                "engineLogging": true,
+                "traceResponse": true
+             },*/
+        },
+        {
+            "type": "vgdb",
+            "request": "launch",
+            "name": "(vgdb) xi_map",
+            "debugger": "gdb",
+            "program": "${workspaceFolder}/xi_map",
+            "preLaunchTask": "CMake Build",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+        }
     ],
 }

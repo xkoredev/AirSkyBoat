@@ -68,6 +68,29 @@ add_definitions(
     -DSOL_PRINT_ERRORS=0
 )
 
+# default to Debug builds
+# Make RelWithDebInfo the default (it does e.g. add '-O2 -g -DNDEBUG' for GNU)
+#   If not in multi-configuration environments, no explicit build type
+#   is set by the user and if we are the root CMakeLists.txt file.
+if (NOT CMAKE_CONFIGURATION_TYPES AND
+    NOT CMAKE_NO_BUILD_TYPE AND
+    NOT CMAKE_BUILD_TYPE AND
+    CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo)
+endif()
+
+if (CMAKE_BUILD_TYPE)
+    string(TOUPPER "_${CMAKE_BUILD_TYPE}" MY_PROJECT_BUILD_TYPE_EXT)
+endif()
+
+# Choose a configuration for our compiler tests
+if (NOT CMAKE_CONFIGURATION_TYPES AND
+    NOT CMAKE_NO_BUILD_TYPE)
+    set(CMAKE_TRY_COMPILE_CONFIGURATION "${CMAKE_BUILD_TYPE}")
+else()
+    set(CMAKE_TRY_COMPILE_CONFIGURATION RelWithDebInfo)
+endif()
+
 add_subdirectory(ext)
 
 include(ClangTidy)

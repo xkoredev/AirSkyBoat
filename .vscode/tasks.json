@@ -12,6 +12,15 @@
                     "0",
                 ]
             },
+            "osx": {
+                "command": "killall",
+                "args": [
+                    "xi_connect",
+                    "||",
+                    "exit",
+                    "0",
+                ]
+            },
             "windows": {
                 "command": "cmd",
                 "args": [
@@ -28,6 +37,15 @@
             "label": "Kill xi_map",
             "type": "shell",
             "linux": {
+                "command": "killall",
+                "args": [
+                    "xi_map",
+                    "||",
+                    "exit",
+                    "0",
+                ]
+            },
+            "osx": {
                 "command": "killall",
                 "args": [
                     "xi_map",
@@ -60,6 +78,15 @@
                     "0",
                 ]
             },
+            "osx": {
+                "command": "killall",
+                "args": [
+                    "xi_search",
+                    "||",
+                    "exit",
+                    "0",
+                ]
+            },
             "windows": {
                 "command": "cmd",
                 "args": [
@@ -84,6 +111,15 @@
                     "0",
                 ]
             },
+            "osx": {
+                "command": "killall",
+                "args": [
+                    "xi_world",
+                    "||",
+                    "exit",
+                    "0",
+                ]
+            },
             "windows": {
                 "command": "cmd",
                 "args": [
@@ -100,6 +136,9 @@
             "label": "Create Build Dir",
             "type": "shell",
             "linux": {
+                "command": "mkdir -p ./build/"
+            },
+            "osx": {
                 "command": "mkdir -p ./build/"
             },
             "windows": {
@@ -127,12 +166,15 @@
                 "Kill xi_world",
                 "Create Build Dir"
             ],
-            "command": "cmake",
+            "command": "/usr/local/bin/cmake",
             "args": [
                 "-S",
                 "${workspaceFolder}",
                 "-B",
                 "${workspaceFolder}/build",
+                // "-G",
+                // "'Unix MakeFiles'",
+                "-DCMAKE_BUILD_TYPE=Debug"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -144,11 +186,12 @@
             "dependsOn": [
                 "CMake Configuration"
             ],
-            "command": "cmake",
+            "command": "/usr/local/bin/cmake",
             "args": [
                 "--build",
                 "${workspaceFolder}/build",
-                "-j8"
+                "-j",
+                "12"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -158,6 +201,36 @@
                 "isDefault": true
             },
         },
+        // {
+        //     "label": "cmake",
+        //     "command": "/usr/local/bin/cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug",
+        //     "type": "shell",
+        //     "presentation": {
+        //         "echo": true,
+        //         "reveal": "always",
+        //         "panel": "shared"
+        //     }
+        // },
+        // {
+        //     "label": "make",
+        //     "command": "make -j 8 -d",
+        //     "type": "shell",
+        //     "presentation": {
+        //         "echo": true,
+        //         "reveal": "always",
+        //         "panel": "shared"
+        //     },
+        //     "group": "build"
+        // },
+        // {
+        //     "label": "CMake Build OSX",
+        //     "dependsOn": [
+        //         "CMake Configuration",
+        //         "CMake Build",
+        //         "make"
+        //     ],
+        //     "dependsOrder": "sequence"
+        // }
     ],
     "version": "2.0.0"
 }
