@@ -140,7 +140,6 @@ xi.garrison.spawnNPC = function(zone, zoneData, x, y, z, rot, name, look)
     -- Death listener for tracking win/lose condition
     mob:addListener("DEATH", "GARRISON_NPC_DEATH", function(mobArg)
         zoneData.deadNPCCount = zoneData.deadNPCCount + 1
-        mobArg:removeListener("GARRISON_NPC_DEATH")
     end)
 
     return mob
@@ -180,7 +179,7 @@ end
 
 -- Spawns a mob with the given id for the given zone.
 xi.garrison.spawnMob = function(mobID, zoneData)
-    mob = SpawnMob(mobID)
+    local mob = SpawnMob(mobID)
     if mob == nil then
         return nil
     end
@@ -192,7 +191,6 @@ xi.garrison.spawnMob = function(mobID, zoneData)
     -- Death listener for tracking win/lose condition
     mob:addListener("DEATH", "GARRISON_MOB_DEATH", function(mobArg)
         zoneData.deadMobCount = zoneData.deadMobCount + 1
-        mobArg:removeListener("GARRISON_MOB_DEATH")
     end)
 
     -- A wave is considered complete when all mobs are done despawning
@@ -203,7 +201,6 @@ xi.garrison.spawnMob = function(mobID, zoneData)
     -- For this reason, we track both death and despawn as separate events
     mob:addListener("DESPAWN", "GARRISON_MOB_DESPAWN", function(mobArg)
         zoneData.despawnedMobCount = zoneData.despawnedMobCount + 1
-        mobArg:removeListener("GARRISON_MOB_DESPAWN")
     end)
 
     return mob
