@@ -11,6 +11,16 @@
 
 fn = {}
 
+-- Given a table and a mapping function, returns a new table created by
+-- applying the given mapping function to the given table elements
+function fn.map(tbl, func)
+    local t = {}
+    for k,v in pairs(tbl) do
+        t[k] = func(k, v)
+    end
+    return t
+end
+
 -- Given a table and a filter function, returns a new table composed of the
 -- elements that pass the given filter.
 -- e.g;
@@ -62,8 +72,6 @@ function fn.sum(tbl, func)
     local sum = 0
 
     for k, v in pairs(tbl) do
-        print(k)
-        print(v)
         sum = sum + func(k, v)
     end
 
@@ -76,8 +84,6 @@ end
 -- e.g: fn.sum({"a, "a", "b"}, fn.counter(function (k,v) return v == "a" end)) --> 2
 function fn.counter(predicate)
     return function (k, v)
-        print(k)
-        print(v)
         if predicate(k, v) then
             return 1
         else

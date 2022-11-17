@@ -45,17 +45,15 @@ local debugLogf = function(msg, ...)
 end
 
 -- Shows the given server message to all players if DEBUG_GARRISON is enabled
-local debugPrintToPlayers = function(zoneData, msg)
+local debugPrintToPlayers = function(players, msg)
     if xi.settings.main.DEBUG_GARRISON then
-        for _, entityId in pairs(zoneData.players) do
-            local entity = GetPlayerByID(entityId)
-            if entity ~= nil then
-                entity:PrintToPlayer(msg)
-            end
+        for _, player in pairs(players) do
+            player:PrintToPlayer(msg)
         end
     end
 end
 
+-- Sends a message packet to all players
 local messagePlayers = function(npc, players, msg)
     for _,player in ipairs(players) do
         player:messageText(npc, msg)
@@ -77,7 +75,7 @@ xi.garrison.addLevelCap = function(entity, cap)
         xi.effect.LEVEL_RESTRICTION,
         cap,
         0,
-        xi.settings.main.GARRISON_TIME_LIMIT,
+        0,
         0,
         0,
         0,
@@ -264,8 +262,11 @@ end
 
 xi.garrison.tick = nil -- Prototype
 xi.garrison.tick = function(npc)
-    local zone     = npc:getZone()
-    local zoneData = xi.garrison.zoneData[zone:getID()]
+    local zone         = npc:getZone()
+    local zoneData     = xi.garrison.zoneData[zone:getID()]
+    local ID           = zones[npc:getZoneID()]
+    local entityMapper = function (_,entityId) return GetPlayerByID(entityId) end
+    local players = fn.map(zoneData.players, entityMapper)
 
     switch (zoneData.state) : caseof
     {
@@ -282,13 +283,8 @@ xi.garrison.tick = function(npc)
 
             -- We do not cache player entity state as they can reraise or DC,
             -- making caching more error prone
-            local allPlayersDead = true
-            for _, entityId in pairs(zoneData.players) do
-                local entity = GetPlayerByID(entityId)
-                if entity and entity:isAlive() then
-                    allPlayersDead = false
-                end
-            end
+            local isAliveFn = function(_,player) return player ~= nil and player:isAlive() end
+            local allPlayersDead = not fn.any(players, isAliveFn)
 
             -- This caching works because the same mob ID is never used to respawn a mob
             -- within the same wave.
@@ -299,8 +295,8 @@ xi.garrison.tick = function(npc)
             local allNPCsDead = #zoneData.npcs == zoneData.deadNPCCount
             if allNPCsDead or allPlayersDead then
                 -- You fought hard, and you proved yourself worthy...
-                debugPrintToPlayers(zoneData, "Mission failed by death")
-                messagePlayers(npc, zoneData.players, ID.text.GARRISON_BASE + 19)
+                debugPrintToPlayers(players, "Mission failed by death")
+                messagePlayers(npc, players, ID.text.GARRISON_BASE + 39)
                 zoneData.state = xi.garrison.state.ENDED
                 return
             end
@@ -333,12 +329,10 @@ xi.garrison.tick = function(npc)
             end
 
             -- case 6: Timeout
-            -- TODO: Players need to get entity
-            local lvlCapCounter = fn.counter(function(_,v) return v:hasStatusEffect(xi.effect.LEVEL_RESTRICTION) end)
-            if fn.sum(zoneData.players, lvlCapCounter) == 0 then
+            if os.time() > zoneData.endTime then
                 -- You fought hard, and you proved yourself worthy...
-                debugPrintToPlayers(zoneData, "Mission failed by timeout")
-                messagePlayers(npc, zoneData.players, ID.text.GARRISON_BASE + 19)
+                debugPrintToPlayers(players, "Mission failed by timeout")
+                messagePlayers(npc, players, ID.text.GARRISON_BASE + 39)
 
                 zoneData.state = xi.garrison.state.ENDED
             end
@@ -346,7 +340,7 @@ xi.garrison.tick = function(npc)
 
         [xi.garrison.state.SPAWN_BOSS] = function()
             debugLog("State: Spawn Boss")
-            debugPrintToPlayers(zoneData, "Spawning boss")
+            debugPrintToPlayers(players, "Spawning boss")
 
             local bossID = zone:queryEntitiesByName(zoneData.mobBoss)[1]:getID()
             local mob = xi.garrison.spawnMob(bossID, zoneData)
@@ -365,7 +359,7 @@ xi.garrison.tick = function(npc)
             debugLog("State: Advance Wave")
             debugLogf("Wave Idx: %i. Waves: %i", zoneData.waveIndex, #xi.garrison.waves.groupsPerWave)
             debugLogf("Next wave: %i", zoneData.waveIndex)
-            debugPrintToPlayers(zoneData, "Wave " .. zoneData.waveIndex .. " cleared")
+            debugPrintToPlayers(players, "Wave " .. zoneData.waveIndex .. " cleared")
 
             zoneData.waveIndex = zoneData.waveIndex + 1
             zoneData.groupIndex = 1
@@ -397,7 +391,7 @@ xi.garrison.tick = function(npc)
             -- This method should work fine even if some of these mobs or npcs are invalid / dead
             xi.garrison.aggroGroups(mobIDs, zoneData.npcs)
 
-            debugPrintToPlayers(zoneData, "Spawn: " .. #zoneData.mobs .. "/" .. poolSize .. ". Wave: " .. zoneData.waveIndex)
+            debugPrintToPlayers(players, "Spawn: " .. #zoneData.mobs .. "/" .. poolSize .. ". Wave: " .. zoneData.waveIndex)
             zoneData.nextSpawnTime = os.time() + xi.garrison.waves.delayBetweenGroups
             zoneData.state = xi.garrison.state.BATTLE
             zoneData.groupIndex = zoneData.groupIndex + 1
@@ -405,9 +399,9 @@ xi.garrison.tick = function(npc)
 
         [xi.garrison.state.GRANT_LOOT] = function()
             debugLog("State: Grant Loot")
-            debugPrintToPlayers(zoneData, "Mission success")
+            debugPrintToPlayers(players, "Mission success")
 
-            messagePlayers(npc, zoneData.players, ID.text.GARRISON_BASE + 39)
+            messagePlayers(npc, players, ID.text.GARRISON_BASE + 36)
             xi.garrison.handleLootRolls(xi.garrison.loot[zoneData.levelCap], zoneData.players)
             zoneData.state = xi.garrison.state.ENDED
         end,
@@ -415,26 +409,11 @@ xi.garrison.tick = function(npc)
         [xi.garrison.state.ENDED] = function()
             debugLog("State: Ended")
 
-            for _, entityId in pairs(zoneData.players) do
-                local entity = GetPlayerByID(entityId)
-                if entity ~= nil then
-                    entity:delStatusEffect(xi.effect.LEVEL_RESTRICTION)
-                end
-            end
-
-            for _, entityId in pairs(zoneData.npcs) do
-                DespawnMob(entityId, zone)
-            end
-
-            for _, entityId in pairs(zoneData.mobs) do
-                DespawnMob(entityId, zone)
-            end
-
-            zoneData.continue = false
+            xi.garrison.stop(zone)
         end,
     }
 
-    if zoneData.continue then
+    if zoneData.isRunning then
         npc:timer(1000, function(npcArg)
             xi.garrison.tick(npcArg)
         end)
@@ -448,22 +427,24 @@ xi.garrison.start = function(player, npc)
     zoneData.npcs        = {}
     zoneData.mobs        = {}
     zoneData.state       = xi.garrison.state.SPAWN_NPCS
-    zoneData.continue    = true
+    zoneData.isRunning    = true
     zoneData.stateTime   = os.time()
     zoneData.waveIndex   = 1
     zoneData.groupIndex  = 1
     zoneData.bossSpawned = false
     -- First mob spawn takes xi.garrison.waves.delayBetweenGroups to start
     zoneData.nextSpawnTime = os.time() + xi.garrison.waves.delayBetweenGroups
+    zoneData.endTime           = os.time() + xi.settings.main.GARRISON_TIME_LIMIT
     zoneData.deadNPCCount      = 0
     zoneData.deadMobCount      = 0
     zoneData.despawnedMobCount = 0
 
     -- Adds level cap / registers lockout for all players
+    -- We register lockout at the beginning and end, in case players DC
     for _, member in pairs(player:getAlliance()) do
         if member:getZoneID() == player:getZoneID() then
             xi.garrison.addLevelCap(member, zoneData.levelCap)
-            xi.garrison.registerPlayerEntry(member)
+            xi.garrison.savePlayerLockout(member)
 
             table.insert(zoneData.players, member:getID())
         end
@@ -471,6 +452,32 @@ xi.garrison.start = function(player, npc)
 
     -- The starting NPC is the 'anchor' for all timers and logic for this Garrison
     xi.garrison.tick(npc)
+end
+
+-- Stops and cleans up the current garrison event (if any) on the given zone
+-- Can be called externally from GM commands
+xi.garrison.stop = function(zone)
+    local zoneData       = xi.garrison.zoneData[zone:getID()]
+    for _, entityId in pairs(zoneData.players or {}) do
+        local entity = GetPlayerByID(entityId)
+        if entity ~= nil then
+            entity:delStatusEffect(xi.effect.LEVEL_RESTRICTION)
+            xi.garrison.savePlayerLockout(entity)
+        end
+    end
+
+    for _, entityId in pairs(zoneData.npcs or {}) do
+        DespawnMob(entityId, zone)
+    end
+
+    for _, entityId in pairs(zoneData.mobs or {}) do
+        DespawnMob(entityId, zone)
+    end
+
+    zoneData.players     = {}
+    zoneData.npcs        = {}
+    zoneData.mobs        = {}
+    zoneData.isRunning = false
 end
 
 xi.garrison.onTrade = function(player, npc, trade, guardNation)
@@ -563,7 +570,7 @@ end
 -- * Player is at least at GARRISON_RANK rank level
 xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
     local ID = zones[player:getZoneID()]
-    if zoneData.continue then
+    if zoneData.isRunning then
         debugLog("Another garrison in progress")
         player:messageText(npc, ID.text.GARRISON_BASE + 1)
         return false
@@ -614,7 +621,7 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
 end
 
 -- Stores data related to player entry time / lockout
-xi.garrison.registerPlayerEntry = function(player)
+xi.garrison.savePlayerLockout = function(player)
     local nextEntryTime = os.time() + xi.settings.main.GARRISON_LOCKOUT
     if xi.settings.main.GARRISON_ONCE_PER_WEEK then
         nextEntryTime = math.max(nextEntryTime, getConquestTally())
@@ -630,6 +637,7 @@ xi.garrison.isAnyPlayerOnEntryCooldown = function(players)
     for _, player in pairs(players) do
         local nextValidAttemptTime = player:getCharVar("[Garrison]NextEntryTime")
         if os.time() < nextValidAttemptTime then
+            debugLogf("Cooldown time remaining: %d", nextValidAttemptTime - os.time())
             return true
         end
     end
