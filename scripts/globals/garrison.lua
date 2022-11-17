@@ -573,7 +573,7 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
         return false
     end
 
-    local sameZone = function (_,v) return v ~= nil and v:getZoneID() == player:getZoneID() end
+    local sameZone = function (_, v) return v ~= nil and v:getZoneID() == player:getZoneID() end
     local membersInZone = fn.filterArray(player:getAlliance(), sameZone)
 
     -- This assumes that only the player trading the item has to be from the right nation
@@ -594,7 +594,7 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
         -- This is a custom message. I don't believe retail has this limitation
         debugLogf("Alliance exceeds member limit: %d", xi.settings.main.GARRISON_PARTY_LIMIT)
         player:PrintToPlayer(printf("Maximum garrison alliance size is %d", xi.settings.main.GARRISON_PARTY_LIMIT))
-        return false;
+        return false
     end
 
     local doesNotMeetRank = function(_, v)
@@ -604,14 +604,14 @@ xi.garrison.validateEntry = function(zoneData, player, npc, guardNation)
         -- These young participants are quite spirited, but they lack valuable battle experience
         debugLogf("Leader does not meet required rank: %d", xi.settings.main.GARRISON_RANK)
         player:messageText(npc, ID.text.GARRISON_BASE + 4)
-        return false;
+        return false
     end
 
     if xi.garrison.isAnyPlayerOnEntryCooldown(membersInZone) then
         -- We commend you on your services in helping us avert the beastmen's attack. I do not see them attacking us again any time soon
         debugLogf("Alliance members on cooldown")
         player:messageText(npc, ID.text.GARRISON_BASE + 40)
-        return false;
+        return false
     end
 
     return true
