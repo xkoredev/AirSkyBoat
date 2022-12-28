@@ -47,5 +47,20 @@ function Mission:complete(player)
         self:cleanup(player)
     end
 
+    -- Clear trade container if needed
+    -- This avoids issues with quest lua files not properly
+    -- calling `tradeComplete()` on fail
+    self:tradeComplete(player, didComplete)
+
     return didComplete
+end
+
+-- Called from quest or mission system to clean up player trade container
+-- TODO: Put in common location
+function Mission:tradeComplete(player, takeItems)
+    if takeItems then
+        player:confirmTrade()
+    else
+        player:tradeComplete(false)
+    end
 end
