@@ -11,6 +11,44 @@ require('scripts/globals/extravaganza')
 xi = xi or {}
 xi.besieged = xi.besieged or {}
 
+------------------------------------
+--  Disclaimer: This file contains a few methods that are ToAU related but
+--  not Besieged only. These methods will be moved to a more appropriate
+--  file upstream.
+--  In the meantime, they are moved to the bottom.
+------------------------------------
+
+--------------------------------------
+--  Besieged related methods
+--------------------------------------
+
+-----------------------------------
+-- function getImperialDefenseStats() returns:
+-- *how many successive times Al Zahbi has been defended
+-- *Imperial Defense Value
+-- *Total number of imperial victories
+-- *Total number of beastmen victories.
+-- hardcoded constants for now until we have a Besieged system.
+-----------------------------------
+local function getImperialDefenseStats()
+    local successiveWins = 0
+    local defenseBonus = 0
+    local imperialWins = 0
+    local beastmanWins = 0
+    return { successiveWins, defenseBonus, imperialWins, beastmanWins }
+end
+
+-----------------------------------
+-- function getAstralCandescence() returns 1 if Alzhbi has the AC, 0 otherwise.
+-----------------------------------
+xi.besieged.getAstralCandescence = function()
+    return GetAstralCandescenceOwner() == 0
+end
+
+-----------------------------------
+-- ToAU related methods (Not besieged)
+-----------------------------------
+
 xi.besieged.cipherValue = function()
     local active = xi.extravaganza.campaignActive()
 
@@ -31,22 +69,6 @@ local function getMapBitmask(player)
     local astral   = bit.lshift(xi.besieged.getAstralCandescence(), 31) -- Include astral candescence in the top byte
 
     return bit.bor(mamook, halvung, arrapago, astral)
-end
-
------------------------------------
--- function getImperialDefenseStats() returns:
--- *how many successive times Al Zahbi has been defended
--- *Imperial Defense Value
--- *Total number of imperial victories
--- *Total number of beastmen victories.
--- hardcoded constants for now until we have a Besieged system.
------------------------------------
-local function getImperialDefenseStats()
-    local successiveWins = 0
-    local defenseBonus = 0
-    local imperialWins = 0
-    local beastmanWins = 0
-    return { successiveWins, defenseBonus, imperialWins, beastmanWins }
 end
 
 -----------------------------------
@@ -219,11 +241,6 @@ xi.besieged.hasAssaultOrders = function(player)
     end
 
     return event, keyitem
-end
-
--- TODO: Implement Astral Candescence
-xi.besieged.getAstralCandescence = function()
-    return 1 -- Hardcoded to 1 for now
 end
 
 xi.besieged.badges =

@@ -45,6 +45,7 @@ extern sol::state lua;
     lua.new_usertype<BindingTypeName>(className)
 #define SOL_REGISTER(FuncName, Func) lua[className][FuncName] = &Func
 
+#include "besieged_data.h"
 #include "items/item_equipment.h"
 #include "spell.h"
 
@@ -373,7 +374,8 @@ namespace luautils
     void ProgressFishingContest();
 
     // Besieged Utilities
-    auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table;
+    auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD;
+    auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> sol::table;
 
     template <typename... Targs>
     int32 invokeBattlefieldEvent(uint16 battlefieldId, const std::string& eventName, Targs... args)

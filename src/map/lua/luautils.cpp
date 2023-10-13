@@ -239,6 +239,7 @@ namespace luautils
 
         // Besieged
         lua.set_function("GetBeastmenStrongholdInfo", &luautils::GetBeastmenStrongholdInfo);
+        lua.set_function("GetAstralCandescenceOwner", &luautils::GetAstralCandescenceOwner);
 
         // This binding specifically exists to forcefully crash the server.
         // clang-format off
@@ -5795,23 +5796,16 @@ namespace luautils
         fishingcontest::ProgressContest();
     }
 
-    auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table
+    auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> sol::table
     {
-        if (strongholdId > 3)
-        {
-            ShowError("GetBeastmenStrongholdInfo() called with invalid strongholdId [%u]", strongholdId);
-            return sol::lua_nil;
-        }
-
-        auto stronghold = static_cast<BESIEGED_STRONGHOLD>(strongholdId);
-        if (stronghold == BESIEGED_STRONGHOLD::ALZAHBI)
+        if (strongholdId == BESIEGED_STRONGHOLD::ALZAHBI)
         {
             ShowError("GetBeastmenStrongholdInfo() called with strongholdId = 0 (Al Zahbi). This is not supported.");
             return sol::lua_nil;
         }
 
         sol::table table          = lua.create_table();
-        auto       strongholdInfo = besieged::GetBeastmenStrongholdInfo(stronghold);
+        auto       strongholdInfo = besieged::GetBeastmenStrongholdInfo(strongholdId);
 
         table["orders"]                = strongholdInfo.orders;
         table["forces"]                = (uint8)strongholdInfo.forces;
@@ -5822,6 +5816,11 @@ namespace luautils
         table["consecutiveDefeats"]    = strongholdInfo.consecutiveDefeats;
 
         return table;
+    }
+
+    auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD
+    {
+        return besieged::GetAstralCandesceneOwner();
     }
 
     std::string GetItemNameByID(uint16 const& id)
