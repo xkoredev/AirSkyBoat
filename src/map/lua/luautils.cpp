@@ -60,6 +60,7 @@
 #include "ai/states/weaponskill_state.h"
 #include "alliance.h"
 #include "battlefield.h"
+#include "besieged_system.h"
 #include "campaign_system.h"
 #include "common/vana_time.h"
 #include "conquest_system.h"
@@ -225,6 +226,8 @@ namespace luautils
         lua.set_function("GetItemNameByID", &luautils::GetItemNameByID);
         lua.set_function("SendItemToDeliveryBox", &luautils::SendItemToDeliveryBox);
         lua.set_function("SendLuaFuncStringToZone", &luautils::SendLuaFuncStringToZone);
+
+        // Fishing contest
         lua.set_function("NewFishingContest", &luautils::NewFishingContest);
         lua.set_function("UpdateContestStatus", &luautils::UpdateContestStatus);
         lua.set_function("GetFishingContest", &luautils::GetFishingContest);
@@ -233,6 +236,9 @@ namespace luautils
         lua.set_function("SetContestFish", &luautils::SetContestFish);
         lua.set_function("InitializeFishingContestSystem", &luautils::InitializeFishingContestSystem);
         lua.set_function("ProgressFishingContest", &luautils::ProgressFishingContest);
+
+        // Besieged
+        lua.set_function("GetBeastmenStrongholdInfo", &luautils::GetBeastmenStrongholdInfo);
 
         // This binding specifically exists to forcefully crash the server.
         // clang-format off
@@ -5706,6 +5712,8 @@ namespace luautils
         return id;
     }
 
+    // --------- Fishing Contest Functions ------------ //
+
     auto GetCurrentFishingContest() -> sol::table
     {
         return GetFishingContest();
@@ -5785,6 +5793,35 @@ namespace luautils
     void ProgressFishingContest()
     {
         fishingcontest::ProgressContest();
+    }
+
+    auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table
+    {
+        if (strongholdId > 3)
+        {
+            ShowError("GetBeastmenStrongholdInfo() called with invalid strongholdId [%u]", strongholdId);
+            return sol::lua_nil;
+        }
+
+        auto stronghold = static_cast<BESIEGED_STRONGHOLD>(strongholdId);
+        if (stronghold == BESIEGED_STRONGHOLD::ALZAHBI)
+        {
+            ShowError("GetBeastmenStrongholdInfo() called with strongholdId = 0 (Al Zahbi). This is not supported.");
+            return sol::lua_nil;
+        }
+
+        sol::table table          = lua.create_table();
+        auto       strongholdInfo = besieged::GetBeastmenStrongholdInfo(stronghold);
+
+        table["orders"]                = strongholdInfo.orders;
+        table["forces"]                = (uint8)strongholdInfo.forces;
+        table["mirrors"]               = strongholdInfo.mirrors;
+        table["prisoners"]             = strongholdInfo.prisoners;
+        table["strongholdLevel"]       = strongholdInfo.strongholdLevel;
+        table["ownsAstralCandescence"] = strongholdInfo.ownsAstralCandescence;
+        table["consecutiveDefeats"]    = strongholdInfo.consecutiveDefeats;
+
+        return table;
     }
 
     std::string GetItemNameByID(uint16 const& id)

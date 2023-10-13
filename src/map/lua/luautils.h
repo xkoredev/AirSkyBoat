@@ -372,6 +372,9 @@ namespace luautils
     void InitializeFishingContestSystem();
     void ProgressFishingContest();
 
+    // Besieged Utilities
+    auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table;
+
     template <typename... Targs>
     int32 invokeBattlefieldEvent(uint16 battlefieldId, const std::string& eventName, Targs... args)
     {
