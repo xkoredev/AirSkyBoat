@@ -374,9 +374,9 @@ namespace luautils
     void ProgressFishingContest();
 
     // Besieged Utilities
-    auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD;
+    auto GetAstralCandescenceOwner() -> uint8;
     auto GetImperialDefenseLevel() -> uint8;
-    auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> sol::table;
+    auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table;
 
     template <typename... Targs>
     int32 invokeBattlefieldEvent(uint16 battlefieldId, const std::string& eventName, Targs... args)

@@ -70,8 +70,11 @@ end
 -----------------------------------
 xi.besieged.getAstralCandescence = function()
     local candescenceOwner = GetAstralCandescenceOwner()
-    print(candecenceOwner)
-    return candescenceOwner == xi.besieged.STRONGHOLD.ALZHABI
+    if candescenceOwner == xi.besieged.STRONGHOLD.ALZHABI then
+        return 1
+    else
+        return 0
+    end
 end
 
 -----------------------------------
