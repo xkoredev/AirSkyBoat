@@ -26,9 +26,5 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 namespace besieged
 {
     std::shared_ptr<BesiegedData> GetBesiegedData(); // Cached data with besieged map info
-
-    auto GetAstralCandesceneOwner() -> BESIEGED_STRONGHOLD; // Get the current owner of the Astral Candescence
-    auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> stronghold_info_t; // Get beastmen stronghold info by stronghold id
-
     void HandleZMQMessage(uint8* data); // Called whenever a ZMQ message is recieved from world server
 } // namespace besieged

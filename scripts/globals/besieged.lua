@@ -22,6 +22,31 @@ xi.besieged = xi.besieged or {}
 --  Besieged related methods
 --------------------------------------
 
+xi.besieged.STRONGHOLD =
+{
+    ALZHABI = 0,
+    MAMOOL = 1,
+    HALVUNG = 2,
+    ARRAPAGO = 3
+}
+
+xi.besieged.ALZHABI_ORDERS =
+{
+    DEFENSE = 0x00,
+    INTERCEPT = 0x01,
+    INFILTRATE = 0x02,
+}
+
+xi.besieged.BEASTMEN_ORDERS =
+{
+    TRAIN = 0x00,
+    ADVANCE = 0x01,
+    ATTACK = 0x02,
+    RETREAT = 0x03,
+    DEFEND = 0x04,
+    PREPARE = 0x05,
+}
+
 -----------------------------------
 -- function getImperialDefenseStats() returns:
 -- *how many successive times Al Zahbi has been defended
@@ -31,8 +56,10 @@ xi.besieged = xi.besieged or {}
 -- hardcoded constants for now until we have a Besieged system.
 -----------------------------------
 local function getImperialDefenseStats()
+    -- TODO: get successiveWins, imperialWins and beastmanWins from
+    -- besieged_battle_history table once implemented
     local successiveWins = 0
-    local defenseBonus = 0
+    local defenseBonus = GetImperialDefenseLevel()
     local imperialWins = 0
     local beastmanWins = 0
     return { successiveWins, defenseBonus, imperialWins, beastmanWins }
@@ -42,7 +69,9 @@ end
 -- function getAstralCandescence() returns 1 if Alzhbi has the AC, 0 otherwise.
 -----------------------------------
 xi.besieged.getAstralCandescence = function()
-    return GetAstralCandescenceOwner() == 0
+    local candescenceOwner = GetAstralCandescenceOwner()
+    print(candecenceOwner)
+    return candescenceOwner == xi.besieged.STRONGHOLD.ALZHABI
 end
 
 -----------------------------------

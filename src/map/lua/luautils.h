@@ -375,6 +375,7 @@ namespace luautils
 
     // Besieged Utilities
     auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD;
+    auto GetImperialDefenseLevel() -> uint8;
     auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> sol::table;
 
     template <typename... Targs>

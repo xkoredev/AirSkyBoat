@@ -5805,7 +5805,7 @@ namespace luautils
         }
 
         sol::table table          = lua.create_table();
-        auto       strongholdInfo = besieged::GetBeastmenStrongholdInfo(strongholdId);
+        auto       strongholdInfo = besieged::GetBesiegedData()->getBeastmenStrongholdInfo(strongholdId);
 
         table["orders"]                = strongholdInfo.orders;
         table["forces"]                = (uint8)strongholdInfo.forces;
@@ -5820,7 +5820,7 @@ namespace luautils
 
     auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD
     {
-        return besieged::GetAstralCandesceneOwner();
+       return besieged::GetBesiegedData()->getAstralCandescenceOwner();
     }
 
     std::string GetItemNameByID(uint16 const& id)

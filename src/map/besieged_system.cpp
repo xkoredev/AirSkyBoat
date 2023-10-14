@@ -39,24 +39,6 @@ namespace besieged
     }
 
     /**
-     * GetAstralCandescenceOwner returns the current owner of the Astral Candescence
-     */
-    auto GetAstralCandescenceOwner() -> BESIEGED_STRONGHOLD
-    {
-        auto besiegedData = GetBesiegedData();
-        return besiegedData->getAstralCandescenceOwner();
-    }
-
-    /**
-     * GetBeastmenStrongholdInfo returns stronghold info by stronghold id
-     */
-    auto GetBeastmenStrongholdInfo(BESIEGED_STRONGHOLD strongholdId) -> stronghold_info_t
-    {
-        auto besiegedData = GetBesiegedData();
-        return besiegedData->getBeastmenStrongholdInfo(strongholdId);
-    }
-
-    /**
      * Called when stronghold updates are received from the world server
      */
     void HandleStrongholdUpdate(std::vector<stronghold_info_t> const& strongHoldInfos)
