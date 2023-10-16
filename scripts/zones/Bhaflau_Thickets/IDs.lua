@@ -38,6 +38,7 @@ zones[xi.zone.BHAFLAU_THICKETS] =
         AREA_FULL                     = 7593, -- This area is fully occupied. You were unable to enter.
         MEMBER_NO_REQS                = 7597, -- Not all of your party members meet the requirements for this objective. Unable to enter area.
         MEMBER_TOO_FAR                = 7601, -- One or more party members are too far away from the entrance. Unable to enter area.
+        BESIEGED_UPDATES_BASE         = 7624, -- The Mamool Ja Savages are on the move. Intercept their forces in the Wajaom Woodlands!
         SHED_LEAVES                   = 7662, -- The ground is strewn with shed leaves...
         BLOOD_STAINS                  = 7664, -- The ground is smeared with bloodstains...
         DRAWS_NEAR                    = 7689, -- Something draws near!

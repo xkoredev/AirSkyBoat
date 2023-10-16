@@ -36,6 +36,7 @@ zones[xi.zone.AL_ZAHBI] =
         TATEN_BILTEN_SHOP_DIALOG      = 7858, -- Weave something beautiful with the materials you buy here, okay?
         CHOCOBO_HAPPY                 = 7861, -- The chocobo appears to be extremely happy.
         SANCTION                      = 7986, -- You have received the Empire's Sanction.
+        BESIEGED_UPDATES_BASE         = 8097, -- The Mamool Ja Savages are on the move. Intercept their forces in the Wajaom Woodlands!
     },
     mob =
     {

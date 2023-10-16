@@ -83,6 +83,7 @@ zones[xi.zone.AHT_URHGAN_WHITEGATE] =
         SANCTION                      = 9817,  -- You have received the Empire's Sanction.
         FL_PROMOTION                  = 9558,  -- <Player Name≻ has been promoted to First Lieutenant!
         CPT_PROMOTION                 = 9559,  -- <Player Name≻ has been promoted to Captain!
+        BESIEGED_UPDATES_BASE         = 9884, -- The Mamool Ja Savages are on the move. Intercept their forces in the Wajaom Woodlands!
         ZASSHAL_DIALOG                = 11011, -- 'ang about. Looks like the permit you got was the last one I 'ad, so it might take me a bit o' time to scrounge up some more. 'ere, don't gimme that look. I'll be restocked before you know it.
         SL_PROMOTION                  = 12037, -- <Player Name≻ has been promoted to Second Lieutenant!
         CS_PROMOTION                  = 12341, -- <Player Name≻ has been promoted to Chief Sergeant!

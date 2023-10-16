@@ -23,6 +23,7 @@ zones[xi.zone.AYDEEWA_SUBTERRANE] =
         MEMBERS_LEVELS_ARE_RESTRICTED = 7023, -- Your party is unable to participate because certain members' levels are restricted.
         FISHING_MESSAGE_OFFSET        = 7057, -- You can't fish here.
         MINING_IS_POSSIBLE_HERE       = 7328, -- Mining is possible here if you have <item>.
+        BESIEGED_UPDATES_BASE         = 7424, -- The Mamool Ja Savages are on the move. Intercept their forces in the Wajaom Woodlands!
         SENSE_OMINOUS_PRESENCE        = 8007, -- You sense an ominous presence...
         BLOOD_STAINS                  = 8013, -- The ground is smeared with bloodstains...
         DRAWS_NEAR                    = 8038, -- Something draws near!
