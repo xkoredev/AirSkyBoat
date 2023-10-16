@@ -35,6 +35,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include <thread>
 
 #include "ability.h"
+#include "besieged_system.h"
 #include "common/vana_time.h"
 #include "job_points.h"
 #include "linkshell.h"
@@ -326,6 +327,8 @@ int32 do_init(int32 argc, char** argv)
     PacketGuard::Init();
 
     moduleutils::OnInit();
+
+    besieged::init();
 
     luautils::OnServerStart();
 

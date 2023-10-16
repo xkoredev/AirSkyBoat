@@ -23,9 +23,18 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "common/settings.h"
 #include "map.h"
+#include "utils/zoneutils.h"
 
 namespace besieged
 {
+    // Hardcoded map of beastmen stronghold to advance zone id
+    static const std::map<BESIEGED_STRONGHOLD, uint16> strongholdToZoneId =
+    {
+        { BESIEGED_STRONGHOLD::MAMOOK, 52 },
+        { BESIEGED_STRONGHOLD::HALVUNG, 51 },
+        { BESIEGED_STRONGHOLD::ARRAPAGO, 52 },
+    };
+
     static std::shared_ptr<BesiegedData> besiegedData;
 
     std::shared_ptr<BesiegedData> GetBesiegedData()
@@ -38,6 +47,35 @@ namespace besieged
         return besiegedData;
     }
 
+    void keepZonesAwakeIfNecessary()
+    {
+        auto besiegedData = GetBesiegedData();
+        for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
+        {
+            auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
+            if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+            {
+                // Keep the respective besieged zone awake for 5 minutes.
+                // This is more than enough since we continue to keep zones awake
+                // as long as world sends messages that the stronghold is in advance phase.
+                auto zoneId = strongholdToZoneId.at(strongholdId);
+                auto duration = std::chrono::minutes(5);
+                zoneutils::GetZone(zoneId)->SetTickWhileEmpty(duration);
+            }
+        }
+    }
+
+    /**
+     * Should be called on map initialization
+    */
+    void init()
+    {
+        // With initial data, check if any zones need to be kept active
+        // due to their besieged state
+        DebugBesieged("Initializing Besieged System")
+        keepZonesAwakeIfNecessary();
+    }
+
     /**
      * Called when stronghold updates are received from the world server
      */
@@ -45,8 +83,12 @@ namespace besieged
     {
         TracyZoneScoped;
 
+        // Update the besieged data cache
         auto besiegedData = GetBesiegedData();
         besiegedData->updateStrongholdInfos(strongHoldInfos);
+
+        // Any zones that are in advance phase should be kept awake
+        keepZonesAwakeIfNecessary();
 
         DebugBesieged("Received besieged Stronghold Data:");
         for (auto line : besiegedData->getFormattedData())

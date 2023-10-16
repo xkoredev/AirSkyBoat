@@ -3,13 +3,15 @@
 --     Functions for Besieged system
 --
 -----------------------------------
+require('scripts/globals/besieged_data')
+require('scripts/globals/extravaganza')
 require('scripts/globals/npc_util')
 require('scripts/globals/teleports')
-require('scripts/globals/extravaganza')
 -----------------------------------
 
 xi = xi or {}
 xi.besieged = xi.besieged or {}
+xi.besieged.zoneData = {}
 
 ------------------------------------
 --  Disclaimer: This file contains a few methods that are ToAU related but
@@ -22,30 +24,140 @@ xi.besieged = xi.besieged or {}
 --  Besieged related methods
 --------------------------------------
 
-xi.besieged.STRONGHOLD =
-{
-    ALZHABI = 0,
-    MAMOOL = 1,
-    HALVUNG = 2,
-    ARRAPAGO = 3
-}
+-----------------------------------
+--  Forces Advancing
+-----------------------------------
 
-xi.besieged.ALZHABI_ORDERS =
-{
-    DEFENSE = 0x00,
-    INTERCEPT = 0x01,
-    INFILTRATE = 0x02,
-}
+local spawnMob = function(npcId, zoneId)
+    local zoneData = xi.besieged.zoneData[zoneId]
+    if zoneData == nil then
+        print("Zone data not initialized for zone: " .. zoneId)
+        return
+    end
 
-xi.besieged.BEASTMEN_ORDERS =
-{
-    TRAIN = 0x00,
-    ADVANCE = 0x01,
-    ATTACK = 0x02,
-    RETREAT = 0x03,
-    DEFEND = 0x04,
-    PREPARE = 0x05,
-}
+    local mob = SpawnMob(npcId)
+    if mob ~= nil then
+        table.insert(zoneData.mobs, npcId)
+        print("Spawned Besieged mob: " .. npcId .. " in zone: " .. zoneId)
+    else
+        print("Failed to spawn Besieged mob: " .. npcId .. " in zone: " .. zoneId)
+    end
+end
+
+local sendForcesAdvancingMsg = function(strongholdId, zoneId)
+    -- local stronghold = GetBeastmenStrongholdInfo(strongholdId)
+    -- local zoneId = zone:getID()
+    -- local msg = string.format("The %s forces are advancing!", stronghold["name"])
+    -- zone:sendText(0, msg)
+
+    print("Sending forces advancing message to zone: " .. zoneId)
+
+    local zone = GetZone(zoneId)
+    local playersInZone = zone:getPlayers()
+    for _, player in pairs(playersInZone) do
+        print("Sending message to: " .. player:getName())
+        player:messageText(player, 40888, 65285)
+    end
+end
+
+local spawnBeastmenIfNecessary = function(zone)
+    local zoneId = zone:getID()
+
+    if xi.besieged.zoneData[zoneId].beastmenSpawned then
+        return
+    end
+
+    -- For all beastmen strongholds (1 to 3),
+    -- check their besieged info and spawn beastmen
+    -- if in the advancing stage.
+    for strongholdId = 1, 3 do
+        if xi.besieged.waves[strongholdId].zone == zone:getID() then
+            local stronghold = GetBeastmenStrongholdInfo(strongholdId)
+            if stronghold["orders"] == xi.besieged.BEASTMEN_ORDERS.ADVANCE then
+                xi.besieged.spawnBeastmen(strongholdId, zoneId)
+            end
+        end
+    end
+end
+
+xi.besieged.spawnBeastmen = function(strongholdId, zoneId)
+    local stronghold = GetBeastmenStrongholdInfo(strongholdId)
+    local waves = xi.besieged.waves[strongholdId]
+    local npcOffset = waves.npcOffset
+    local npcCount = waves.npcCount
+    local zoneData = xi.besieged.zoneData[zoneId]
+
+    -- % of mobs spawned is based on the stronghold forces
+    -- Forces can range from 100 to 200. With 100 spawning the minimum amount
+    -- of mobs, and 200 spawning all of npcCount
+    local minSpawns = 15
+    local spawnRatio = (stronghold["forces"] - 100) / 100
+    local numSpawns = math.floor((npcCount - minSpawns) * spawnRatio + minSpawns)
+    numSpawns = utils.clamp(numSpawns, minSpawns, npcCount)
+
+    -- Spawn mobs
+    for i = 1, numSpawns do
+        local npcId = npcOffset + i - 1
+        spawnMob(npcId, zoneId)
+    end
+
+    -- Update state and send zone message
+    zoneData.beastmenSpawned = true
+    sendForcesAdvancingMsg(strongholdId, zoneId)
+end
+
+xi.besieged.despawnBeastmen = function(zoneId)
+    local zoneData = xi.besieged.zoneData[zoneId]
+
+    if zoneData == nil then
+        return
+    end
+
+    if not zoneData.beastmenSpawned then
+        return
+    end
+
+    local zone = GetZone(zoneId)
+    for _, npcId in pairs(zoneData.mobs) do
+        print("Despawn mob: " .. npcId .. " in zone: " .. zoneId)
+        DespawnMob(npcId, zone)
+    end
+
+    zoneData.mobs = {}
+    zoneData.beastmenSpawned = false
+end
+
+-----------------------------------
+--  Zone Lifecycle methods
+-----------------------------------
+
+xi.besieged.initZone = function(zone)
+    local zoneId = zone:getID()
+    print("Init zone: " .. zoneId)
+
+    -- Init empty zone data
+    xi.besieged.zoneData[zoneId] = {
+        beastmenSpawned = false,
+        mobs = {},
+    }
+end
+
+xi.besieged.onZoneTick = function(zone)
+    -- If the zone is not a besieged zone, or it has not been initialized,
+    -- do nothing
+    if (xi.besieged.zoneData[zone:getID()] == nil) then
+        return
+    end
+
+    -- This is a relatively cheap call since all besieged info
+    -- is cached on the map servers
+    spawnBeastmenIfNecessary(zone)
+end
+
+-----------------------------------
+--  Legacy methods 
+--  (TODO: Revisit these and where they are used)
+-----------------------------------
 
 -----------------------------------
 -- function getImperialDefenseStats() returns:

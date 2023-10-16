@@ -25,6 +25,8 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 namespace besieged
 {
+    void init(); // Must be called on map initialization. Checks for zones that may be affected by besieged state.
+
     std::shared_ptr<BesiegedData> GetBesiegedData(); // Cached data with besieged map info
     void HandleZMQMessage(uint8* data); // Called whenever a ZMQ message is recieved from world server
 } // namespace besieged

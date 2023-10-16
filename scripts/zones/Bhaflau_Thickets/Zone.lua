@@ -2,6 +2,7 @@
 -- Zone: Bhaflau_Thickets (52)
 -----------------------------------
 local ID = require('scripts/zones/Bhaflau_Thickets/IDs')
+require("scripts/globals/besieged")
 require('scripts/globals/chocobo_digging')
 require('scripts/globals/helm')
 require('scripts/globals/zone')
@@ -19,6 +20,11 @@ zoneObject.onInitialize = function(zone)
     end
 
     xi.helm.initZone(zone, xi.helm.type.HARVESTING)
+    xi.besieged.initZone(zone)
+end
+
+zoneObject.onZoneTick = function(zone)
+    xi.besieged.onZoneTick(zone)
 end
 
 zoneObject.onZoneIn = function(player, prevZone)
