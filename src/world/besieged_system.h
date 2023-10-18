@@ -58,5 +58,4 @@ private:
     void  handlePreparingPhase(stronghold_info_t& strongholdInfo, bool otherStrongholdAdvancing) const;
 
     void sendStrongholdInfosMsg() const;
-    void sendAdvancePhaseEndedMsg(BESIEGED_STRONGHOLD strongholdId, bool intercepted) const;
 };

@@ -66,8 +66,13 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
             strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
         }
 
+        // Update this specific stronghold with the new info
         this->besiegedData->updateStrongholdInfo(strongholdInfo);
         this->besiegedData->commit(sql);
+
+        // It's okay to send a generic "stronghold update" message
+        // This will make sure all maps have the relevant info, and
+        // zone state should be updated accordingly on tick
         sendStrongholdInfosMsg();
 
         return true;
@@ -255,28 +260,6 @@ void BesiegedSystem::sendStrongholdInfosMsg() const
         ref<uint8>((uint8*)data, start + 9)   = strongholdInfos[i].ownsAstralCandescence;
         ref<uint32>((uint8*)data, start + 10) = strongholdInfos[i].consecutiveDefeats;
     }
-
-    // Send to map
-    queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);
-}
-
-void BesiegedSystem::sendAdvancePhaseEndedMsg(BESIEGED_STRONGHOLD strongholdId, bool intercepted) const
-{
-    auto strongholdInfos = this->besiegedData->getStrongholdInfos();
-
-    DebugBesieged("Sending advance phase ended message for stronghold %d. Intercepted: %d", strongholdId, intercepted);
-
-    // Base length is the type + subtype
-    const std::size_t headerLength = 2 * sizeof(uint8);
-    // Data length is the base length + stronghold id + intercepted bool
-    const std::size_t dataLen      = headerLength + sizeof(uint8) + sizeof(bool);
-    const uint8*      data         = new uint8[dataLen];
-
-    // Regional event type + besieged msg type
-    ref<uint8>((uint8*)data, 0) = REGIONAL_EVT_MSG_BESIEGED;
-    ref<uint8>((uint8*)data, 1) = BESIEGED_WORLD2MAP_ADVANCE_PHASE_ENDED;
-    ref<uint8>((uint8*)data, 2) = strongholdId;
-    ref<bool>((uint8*)data, 3)  = intercepted;
 
     // Send to map
     queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);

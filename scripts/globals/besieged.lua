@@ -57,7 +57,7 @@ local debugPrintToPlayers = function(msg)
     end
 end
 
--- Sends a message packet to all players
+-- Sends a message packet to all players in relevant zones
 local broadcastBesiegedUpdate = function(offset)
     for _, zoneId in pairs(xi.besieged.msgZones) do
         SendLuaFuncStringToZone(zoneId, string.format([[
@@ -69,12 +69,6 @@ local broadcastBesiegedUpdate = function(offset)
                 player:messageText(player, zones[zoneId].text.BESIEGED_UPDATES_BASE + offset, 1)
             end
         ]], zoneId, offset))
-
-        -- local zone = GetZone(zoneId)
-        -- local playersInZone = zone:getPlayers()
-        -- for _, player in pairs(playersInZone) do
-        --     player:messageText(player, zones[zoneId].text.BESIEGED_UPDATES_BASE + offset, 1)
-        -- end
     end
 end
 
