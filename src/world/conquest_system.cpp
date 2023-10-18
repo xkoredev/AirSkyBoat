@@ -21,38 +21,57 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "conquest_system.h"
 
+#include "common/async.h"
 #include "message_server.h"
 
+/**
+ * ConquestSystem both handles messages from map servers and
+ * updates the database with the latest conquest data periodically.
+ *
+ * This class is guided by the following pattern:
+ * - All public methods that may modify the database are enqueued in the task system.
+ * - The task system processes tasks in its own thread
+ * - Private methods are not guarded via the task system, but are only called from
+ *   public methods, so we can assume that they are always called from the task system.
+ */
 ConquestSystem::ConquestSystem()
-: sql(std::make_unique<SqlConnection>())
 {
+    submit([this](){
+        sql = std::make_unique<SqlConnection>();
+    });
 }
 
-bool ConquestSystem::handleMessage(std::vector<uint8> payload,
-                                   in_addr            from_addr,
-                                   uint16             from_port)
+bool ConquestSystem::handleMessage(const std::vector<uint8>& payload,
+                                   in_addr                   from_addr,
+                                   uint16                    from_port)
 {
     const uint8 conquestMsgType = payload[1];
     if (conquestMsgType == CONQUESTMSGTYPE::CONQUEST_MAP2WORLD_GM_WEEKLY_UPDATE)
     {
+        // updateWeekConquest already goes through task system
         updateWeekConquest();
         return true;
     }
 
     if (conquestMsgType == CONQUESTMSGTYPE::CONQUEST_MAP2WORLD_ADD_INFLUENCE_POINTS)
     {
-        // const int32  points = ref<int32>(data, 2);
-        int32  points = 0;
-        uint32 nation = 0;
-        uint8  region = 0;
-        std::memcpy(&points, payload.data() + 2, sizeof(int32));
-        std::memcpy(&nation, payload.data() + 6, sizeof(uint32));
-        std::memcpy(&region, payload.data() + 10, sizeof(uint8));
+        // clang-format off
+        Async::getInstance()->submit([this, payload]()
+        {
+            int32  points = 0;
+            uint32 nation = 0;
+            uint8  region = 0;
+            std::memcpy(&points, payload.data() + 2, sizeof(int32));
+            std::memcpy(&nation, payload.data() + 6, sizeof(uint32));
+            std::memcpy(&region, payload.data() + 10, sizeof(uint8));
 
-        // We update influence but do not immediately send this update to all map servers
-        // Influence updates are sent periodically via time_server instead.
-        // It is okay for map servers to be eventually consistent.
-        updateInfluencePoints(points, nation, (REGION_TYPE)region);
+            // We update influence but do not immediately send this update to all map servers
+            // Influence updates are sent periodically via time_server instead.
+            // It is okay for map servers to be eventually consistent.
+            updateInfluencePoints(points, nation, (REGION_TYPE)region);
+        });
+        // clang-format on
+
         return true;
     }
 
@@ -62,8 +81,14 @@ bool ConquestSystem::handleMessage(std::vector<uint8> payload,
         uint64 ipp = from_addr.s_addr;
         ipp |= (((uint64)from_port) << 32);
 
-        // Send influence data to the requesting map server
-        sendInfluencesMsg(true, ipp);
+        // clang-format off
+        submit([this, ipp]()
+        {
+            // Send influence data to the requesting map server
+            sendInfluencesMsg(true, ipp);
+        });
+        // clang-format on
+
         return true;
     }
 
@@ -72,6 +97,57 @@ bool ConquestSystem::handleMessage(std::vector<uint8> payload,
                           from_addr.s_addr,
                           from_port));
     return false;
+}
+
+void ConquestSystem::updateWeekConquest()
+{
+    // clang-format off
+    submit([this]()
+    {
+        TracyZoneScoped;
+
+        // 1- Notify all zones that tally started
+        sendTallyStartMsg();
+
+        // 2- Do the actual db update
+        const char* Query = "UPDATE conquest_system SET region_control = \
+                                IF(sandoria_influence > bastok_influence AND sandoria_influence > windurst_influence AND \
+                                sandoria_influence > beastmen_influence, 0, \
+                                IF(bastok_influence > sandoria_influence AND bastok_influence > windurst_influence AND \
+                                bastok_influence > beastmen_influence, 1, \
+                                IF(windurst_influence > bastok_influence AND windurst_influence > sandoria_influence AND \
+                                windurst_influence > beastmen_influence, 2, 3)));";
+
+        int ret = sql->Query(Query);
+        if (ret == SQL_ERROR)
+        {
+            ShowError("handleWeeklyUpdate() failed");
+        }
+
+        // 3- Send tally end Msg
+        sendRegionControlsMsg(CONQUEST_WORLD2MAP_WEEKLY_UPDATE_END);
+    });
+    // clang-format on
+}
+
+void ConquestSystem::updateHourlyConquest()
+{
+    // clang-format off
+    submit([this]()
+    {
+        sendInfluencesMsg(true);
+    });
+    // clang-format on
+}
+
+void ConquestSystem::updateVanaHourlyConquest()
+{
+    // clang-format off
+    submit([this]()
+    {
+        sendInfluencesMsg(false);
+    });
+    // clang-format on
 }
 
 void ConquestSystem::sendTallyStartMsg()
@@ -221,42 +297,6 @@ bool ConquestSystem::updateInfluencePoints(int points, unsigned int nation, REGI
                      influences[0], influences[1], influences[2], influences[3], static_cast<uint8>(region));
 
     return ret != SQL_ERROR;
-}
-
-void ConquestSystem::updateWeekConquest()
-{
-    TracyZoneScoped;
-
-    // 1- Notify all zones that tally started
-    sendTallyStartMsg();
-
-    // 2- Do the actual db update
-    const char* Query = "UPDATE conquest_system SET region_control = \
-                            IF(sandoria_influence > bastok_influence AND sandoria_influence > windurst_influence AND \
-                            sandoria_influence > beastmen_influence, 0, \
-                            IF(bastok_influence > sandoria_influence AND bastok_influence > windurst_influence AND \
-                            bastok_influence > beastmen_influence, 1, \
-                            IF(windurst_influence > bastok_influence AND windurst_influence > sandoria_influence AND \
-                            windurst_influence > beastmen_influence, 2, 3)));";
-
-    int ret = sql->Query(Query);
-    if (ret == SQL_ERROR)
-    {
-        ShowError("handleWeeklyUpdate() failed");
-    }
-
-    // 3- Send tally end Msg
-    sendRegionControlsMsg(CONQUEST_WORLD2MAP_WEEKLY_UPDATE_END);
-}
-
-void ConquestSystem::updateHourlyConquest()
-{
-    sendInfluencesMsg(true);
-}
-
-void ConquestSystem::updateVanaHourlyConquest()
-{
-    sendInfluencesMsg(false);
 }
 
 auto ConquestSystem::getRegionalInfluences() -> std::vector<influence_t> const

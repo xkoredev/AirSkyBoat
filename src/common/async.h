@@ -27,11 +27,14 @@
 #include <functional>
 #include <string>
 
-class Async
+/**
+ * This class can be used to schedule either sql queries or tasks for work
+ * in a single thread pool.
+ * This can be used to obtain thread-safety without using locks.
+ */
+class Async : private ts::task_system
 {
 public:
-    ~Async() = default;
-
     static Async* getInstance();
 
     void query(std::string const& query);
@@ -39,9 +42,6 @@ public:
     void submit(std::function<void()> const& func);
 
 private:
-    Async() = default;
-
-    static Async*           _instance;
-    static SqlConnection*   _sql;
-    static ts::task_system* _ts;
+    Async();
+    ~Async() = default;
 };

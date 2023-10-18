@@ -24,37 +24,32 @@
 #include "sql.h"
 #include <task_system.hpp>
 
-// Allocated on and owned the main thread
-Async*           Async::_instance = nullptr;
-ts::task_system* Async::_ts       = nullptr;
+namespace
+{
+    // Allocated on and owned by the task_system worker thread
+    std::unique_ptr<SqlConnection> _sql = nullptr;
+} // namespace
 
-// Allocated on and owned by by _ts
-SqlConnection* Async::_sql = nullptr;
+Async::Async()
+: ts::task_system(1)
+{
+}
 
 Async* Async::getInstance()
 {
-    if (_instance == nullptr)
-    {
-        _instance = new Async();
-
-        // NOTE: We only create a single worker thread in the task_system
-        //     : because we're going to be using _sql, which isn't thread safe.
-        // TODO: Wrap access to _sql in a mutex so it can be shared between
-        //     : threads, and then bump the worker thread count.
-        _ts = new ts::task_system(1);
-    }
-    return _instance;
+    static Async instance;
+    return &instance;
 }
 
 void Async::query(std::string const& query)
 {
     // clang-format off
-    _ts->schedule([query]()
+    this->schedule([query]()
     {
         TracySetThreadName("Async Worker Thread");
         if (_sql == nullptr)
         {
-            _sql = new SqlConnection();
+            _sql = std::make_unique<SqlConnection>();
         }
         _sql->Query(query.c_str());
     });
@@ -68,14 +63,14 @@ void Async::query(std::string const& query)
 void Async::query(std::function<void(SqlConnection*)> const& func)
 {
     // clang-format off
-    _ts->schedule([func]()
+    this->schedule([func]()
     {
         TracySetThreadName("Async Worker Thread");
         if (_sql == nullptr)
         {
-            _sql = new SqlConnection();
+            _sql = std::make_unique<SqlConnection>();
         }
-        func(_sql);
+        func(_sql.get());
     });
     // clang-format on
 }
@@ -83,7 +78,7 @@ void Async::query(std::function<void(SqlConnection*)> const& func)
 void Async::submit(std::function<void()> const& func)
 {
     // clang-format off
-    _ts->schedule([func]()
+    this->schedule([func]()
     {
         TracySetThreadName("Async Worker Thread");
         func();
