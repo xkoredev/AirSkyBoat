@@ -28,6 +28,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "common/logging.h"
 #include "conquest_system.h"
 #include "message_server.h"
+#include "world_server.h"
 
 struct chat_message_t
 {
@@ -44,6 +45,8 @@ struct zone_settings_t
     uint32 misc;
 };
 
+using InternalHandler = std::function<void(std::vector<uint8>&&, in_addr, uint16)>;
+
 namespace
 {
     zmq::context_t                 zContext;
@@ -52,7 +55,7 @@ namespace
     moodycamel::ConcurrentQueue<chat_message_t> outgoing_queue;
 
     std::unique_ptr<SqlConnection>                                        sql;
-    std::unordered_map<REGIONALMSGTYPE, std::shared_ptr<IMessageHandler>> regionalMsgHandlers;
+    std::unordered_map<REGIONALMSGTYPE, InternalHandler>                  regionalMsgHandlers;
     std::unordered_map<uint16, zone_settings_t>                           zoneSettingsMap;
     std::vector<uint64>                                                   mapEndpoints;
     std::vector<uint64>                                                   yellMapEndpoints;
@@ -256,7 +259,7 @@ void message_server_parse(MSGSERVTYPE type, zmq::message_t* extra, zmq::message_
             try
             {
                 auto& handler = regionalMsgHandlers.at((REGIONALMSGTYPE)subType);
-                handler->handleMessage(std::move(bytes), from_ip, from_port);
+                handler(std::move(bytes), from_ip, from_port);
             }
             catch (const std::out_of_range& e)
             {
@@ -374,16 +377,21 @@ void cache_zone_settings()
     std::copy(yellMapEndpointSet.begin(), yellMapEndpointSet.end(), std::back_inserter(yellMapEndpoints));
 }
 
-void message_server_init(const bool& requestExit)
+void message_server_init(WorldServer* worldServer, const bool& requestExit)
 {
     TracySetThreadName("Message Server (ZMQ)");
 
     // Setup SQL
     sql = std::make_unique<SqlConnection>();
 
-    // Handler map registrations
-    regionalMsgHandlers[REGIONALMSGTYPE::REGIONAL_EVT_MSG_CONQUEST] = std::make_shared<ConquestSystem>();
-    regionalMsgHandlers[REGIONALMSGTYPE::REGIONAL_EVT_MSG_BESIEGED] = std::make_shared<BesiegedSystem>();
+    // Handler map registrations.
+    regionalMsgHandlers[REGIONALMSGTYPE::REGIONAL_EVT_MSG_CONQUEST] = [worldServer](std::vector<uint8>&& bytes, in_addr from_ip, uint16 from_port) {
+        worldServer->conquestSystem->handleMessage(std::move(bytes), from_ip, from_port);
+    };
+
+    regionalMsgHandlers[REGIONALMSGTYPE::REGIONAL_EVT_MSG_BESIEGED] = [worldServer](std::vector<uint8>&& bytes, in_addr from_ip, uint16 from_port) {
+        worldServer->besiegedSystem->handleMessage(std::move(bytes), from_ip, from_port);
+    };
 
     // Populate zoneSettingsCache with sql data
     cache_zone_settings();

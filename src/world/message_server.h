@@ -24,6 +24,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "common/mmo.h"
 #include "common/socket.h"
 #include "common/sql.h"
+#include "besieged_system.h"
 #include "conquest_system.h"
 #include "message_handler.h"
 
@@ -31,18 +32,21 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
 
+class WorldServer;
+
 void queue_data(uint64 ipp, MSGSERVTYPE type, const uint8* data, std::size_t size);
 void queue_data_broadcast(MSGSERVTYPE type, const uint8* data, std::size_t size);
 void queue_message(uint64 ipp, MSGSERVTYPE type, zmq::message_t* extra, zmq::message_t* packet = nullptr);
 void queue_message_broadcast(MSGSERVTYPE type, zmq::message_t* extra, zmq::message_t* packet = nullptr);
 
-void message_server_init(const bool& requestExit);
+void message_server_init(WorldServer* worldServer, const bool& requestExit);
+
 void message_server_close();
 
 struct message_server_wrapper_t
 {
-    message_server_wrapper_t(const std::atomic_bool& requestExit)
-    : m_thread(std::make_unique<nonstd::jthread>(std::bind(message_server_init, std::ref(requestExit))))
+    message_server_wrapper_t(WorldServer* worldServer, const std::atomic_bool& requestExit)
+    : m_thread(std::make_unique<nonstd::jthread>(std::bind(message_server_init, worldServer, std::ref(requestExit))))
     {
     }
 
