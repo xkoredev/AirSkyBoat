@@ -72,11 +72,14 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
 
         // Update this specific stronghold with the new info
         this->besiegedData->updateStrongholdInfo(strongholdInfo);
-        this->besiegedData->commit(sql);
 
-        // It's okay to send a generic "stronghold update" message
-        // This will make sure all maps have the relevant info, and
-        // zone state should be updated accordingly on tick
+        // This forces a "tick" immediately after forces change state, since
+        // force A retreating may cause force B to start advancing
+        // This also causes an sql commit of the current cache, which is why we don't
+        // explicitly do so after updating the stronghold info in the cache
+        updateBeastmenForces();
+        // After our state is up to date, send an update message as we would with 
+        // a regular tick
         sendStrongholdInfosMsg();
 
         return true;
