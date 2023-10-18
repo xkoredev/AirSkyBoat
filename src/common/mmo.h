@@ -205,8 +205,14 @@ enum BESIEGEDMSGTYPE : uint8
 
     // World map broadcasts stronghold info to all zones.
     BESIEGED_WORLD2MAP_STRONGHOLD_INFO,
+    // World map broadcasts that a stronghold advance phase has ended, sending
+    // along the result of the phase (intercepted or not).
+    BESIEGED_WORLD2MAP_ADVANCE_PHASE_ENDED,
 
     // MAP ----------> WORLD
+    // Map tells world that a stronghold advance phase has ended, sending
+    // along the result of the phase (intercepted or not).
+    BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED,
 
     // TODO: Fill up Map 2 World Messages
 };

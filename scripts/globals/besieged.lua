@@ -7,11 +7,13 @@ require('scripts/globals/besieged_data')
 require('scripts/globals/extravaganza')
 require('scripts/globals/npc_util')
 require('scripts/globals/teleports')
+require('scripts/globals/utils')
 -----------------------------------
 
 xi = xi or {}
 xi.besieged = xi.besieged or {}
-xi.besieged.zoneData = {}
+xi.besieged.advance = xi.besieged.advance or {}
+xi.besieged.advance.zoneData = {}
 
 ------------------------------------
 --  Disclaimer: This file contains a few methods that are ToAU related but
@@ -25,45 +27,135 @@ xi.besieged.zoneData = {}
 --------------------------------------
 
 -----------------------------------
---  Forces Advancing
+-- Helpers: Logging / Messaging
 -----------------------------------
 
-local spawnMob = function(npcId, zoneId)
-    local zoneData = xi.besieged.zoneData[zoneId]
-    if zoneData == nil then
-        print("Zone data not initialized for zone: " .. zoneId)
-        return
-    end
-
-    local mob = SpawnMob(npcId)
-    if mob ~= nil then
-        table.insert(zoneData.mobs, npcId)
-        print("Spawned Besieged mob: " .. npcId .. " in zone: " .. zoneId)
-    else
-        print("Failed to spawn Besieged mob: " .. npcId .. " in zone: " .. zoneId)
+-- Prints the given message if DEBUG_BESIEGED is enabled
+local debugLog = function(msg)
+    if xi.settings.logging.DEBUG_BESIEGED then
+        print("[Besieged]: " .. msg)
     end
 end
 
-local sendForcesAdvancingMsg = function(strongholdId, zoneId)
-    -- local stronghold = GetBeastmenStrongholdInfo(strongholdId)
-    -- local zoneId = zone:getID()
-    -- local msg = string.format("The %s forces are advancing!", stronghold["name"])
-    -- zone:sendText(0, msg)
-
-    print("Sending forces advancing message to zone: " .. zoneId)
-
-    local zone = GetZone(zoneId)
-    local playersInZone = zone:getPlayers()
-    for _, player in pairs(playersInZone) do
-        print("Sending message to: " .. player:getName())
-        player:messageText(player, 40888, 65285)
+-- Prints the given message with printf if DEBUG_BESIEGED is enabled
+local debugLogf = function(msg, ...)
+    if xi.settings.logging.DEBUG_BESIEGED then
+        printf("[Besieged]: " .. msg, ...)
     end
+end
+
+-- Shows the given server message to all players if DEBUG_BESIEGED is enabled
+local debugPrintToPlayers = function(msg)
+    if xi.settings.logging.DEBUG_BESIEGED then
+        for _, zoneId in pairs(xi.besieged.msgZones) do
+            local zone = GetZone(zoneId)
+            local playersInZone = zone:getPlayers()
+            for _, player in pairs(playersInZone) do
+                player:printToPlayer(msg)
+            end
+        end
+    end
+end
+
+-- Sends a message packet to all players
+local broadcastBesiegedUpdate = function(offset)
+    for _, zoneId in pairs(xi.besieged.msgZones) do
+        SendLuaFuncStringToZone(zoneId, string.format([[
+            local zoneId = %i
+            local offset = %i
+            local zone = GetZone(zoneId)
+            local playersInZone = zone:getPlayers()
+            for _, player in pairs(playersInZone) do
+                player:messageText(player, zones[zoneId].text.BESIEGED_UPDATES_BASE + offset, 1)
+            end
+        ]], zoneId, offset))
+
+        -- local zone = GetZone(zoneId)
+        -- local playersInZone = zone:getPlayers()
+        -- for _, player in pairs(playersInZone) do
+        --     player:messageText(player, zones[zoneId].text.BESIEGED_UPDATES_BASE + offset, 1)
+        -- end
+    end
+end
+
+-----------------------------------
+--  Forces Advancing
+-----------------------------------
+
+local spawnMob = function(npcId, zoneId, strongholdId, pos, path)
+    local zoneData = xi.besieged.advance.zoneData[zoneId]
+    if zoneData == nil then
+        debugLogf("Zone data not initialized for zone: %i", zoneId)
+        return
+    end
+
+    -- Spawn the mob
+    local mob = SpawnMob(npcId)
+    if mob == nil then
+        debugLogf("Failed to spawn mob: %i in zone: %i", npcId, zoneId)
+        return
+    end
+
+    -- Set initial pos and add to zone data state
+    -- Make sure mobs don't aggro or link.
+    mob:setMobMod(xi.mobMod.NO_LINK, 1)
+    mob:setMobMod(xi.mobMod.NO_AGGRO, 1)
+    mob:setPos(pos.x, pos.y, pos.z, pos.rot)
+
+    -- Start path, and set to despawn on arrival
+    -- Script flag is necessary for the callback. Coords to pass a set of coords.
+    mob:pathThrough(path, bit.bor(xi.path.flag.COORDS, xi.path.flag.SCRIPT))
+    mob:addListener("PATH_COMPLETE", "PATH_COMPLETE_BESIEGED", function(mobArg)
+        local mobId = mobArg:getID()
+        local zone = GetZone(zoneId)
+
+        debugLogf("%s (%i) reached Al Zahbi from %s", mobArg:getName(), mobId, zone:getName())
+        zoneData.numReachedAlzhabi = zoneData.numReachedAlzhabi + 1
+
+        -- Remove the mob from mobs table
+        local index = utils.find(zoneData.mobs, mobId)
+        table.remove(zoneData.mobs, index)
+
+        -- Actually despawn the mob
+        DespawnMob(mobId, zone)
+    end)
+
+    -- On mob despawn, if that was the last one,
+    -- trigger advance phase end
+    mob:addListener("DESPAWN", "DESPAWN_BESIEGED", function(mobArg)
+        -- This comment is a bit spammy. Commenting for more fine grained logging
+        -- debugLogf("Mob despawn: %s (%i). Mobs remaining: %i", mobArg:getName(), mobArg:getID(), #zoneData.mobs)
+
+        -- Check if all mobs have arrived or been killed
+        if #zoneData.mobs == 0 and not zoneData.phaseComplete then
+            -- Mark phase complete
+            debugLog("All mobs despawned. Ending advance phase.")
+            zoneData.phaseComplete = true
+
+            -- Either advance to attackin alzhabi or retreat, based on the mobs that have
+            -- reached alzhabi
+            if zoneData.numReachedAlzhabi == 0 then
+                -- The Mamool Ja Savages have retreated.
+                BesiegedAdvancePhaseEnded(strongholdId, true)
+                broadcastBesiegedUpdate(9 + strongholdId - 1)
+                debugLog("Advance phase intercepted")
+            else
+                -- The Mamool Ja Savages have breached the Balrahn Defense Line! Intercept their forces in Al Zahbi's Bastion!
+                BesiegedAdvancePhaseEnded(strongholdId, false)
+                broadcastBesiegedUpdate(3 + strongholdId - 1)
+                debugLog("Advance phase complete. Starting Besieged battle.")
+            end
+        end
+    end)
+
+    table.insert(zoneData.mobs, npcId)
+    debugLogf("Spawned mob: %i in zone: %i", npcId, zoneId)
 end
 
 local spawnBeastmenIfNecessary = function(zone)
     local zoneId = zone:getID()
 
-    if xi.besieged.zoneData[zoneId].beastmenSpawned then
+    if xi.besieged.advance.zoneData[zoneId].beastmenSpawned then
         return
     end
 
@@ -71,7 +163,7 @@ local spawnBeastmenIfNecessary = function(zone)
     -- check their besieged info and spawn beastmen
     -- if in the advancing stage.
     for strongholdId = 1, 3 do
-        if xi.besieged.waves[strongholdId].zone == zone:getID() then
+        if xi.besieged.advance.waves[strongholdId].zone == zone:getID() then
             local stronghold = GetBeastmenStrongholdInfo(strongholdId)
             if stronghold["orders"] == xi.besieged.BEASTMEN_ORDERS.ADVANCE then
                 xi.besieged.spawnBeastmen(strongholdId, zoneId)
@@ -81,11 +173,17 @@ local spawnBeastmenIfNecessary = function(zone)
 end
 
 xi.besieged.spawnBeastmen = function(strongholdId, zoneId)
+    local zoneData = xi.besieged.advance.zoneData[zoneId]
+    if zoneData == nil then
+        debugLogf("Zone data not initialized for zone: %i", zoneId)
+        return
+    end
+
     local stronghold = GetBeastmenStrongholdInfo(strongholdId)
-    local waves = xi.besieged.waves[strongholdId]
+    local waves = xi.besieged.advance.waves[strongholdId]
     local npcOffset = waves.npcOffset
     local npcCount = waves.npcCount
-    local zoneData = xi.besieged.zoneData[zoneId]
+    local path = xi.besieged.advance.paths[zoneId]
 
     -- % of mobs spawned is based on the stronghold forces
     -- Forces can range from 100 to 200. With 100 spawning the minimum amount
@@ -98,16 +196,17 @@ xi.besieged.spawnBeastmen = function(strongholdId, zoneId)
     -- Spawn mobs
     for i = 1, numSpawns do
         local npcId = npcOffset + i - 1
-        spawnMob(npcId, zoneId)
+        spawnMob(npcId, zoneId, strongholdId, path.spawn, path.nodes)
     end
 
     -- Update state and send zone message
+    -- Note: strongholdId - 1 because the first beastmen stronghold is indexed at 1
     zoneData.beastmenSpawned = true
-    sendForcesAdvancingMsg(strongholdId, zoneId)
+    broadcastBesiegedUpdate(strongholdId - 1)
 end
 
 xi.besieged.despawnBeastmen = function(zoneId)
-    local zoneData = xi.besieged.zoneData[zoneId]
+    local zoneData = xi.besieged.advance.zoneData[zoneId]
 
     if zoneData == nil then
         return
@@ -119,12 +218,20 @@ xi.besieged.despawnBeastmen = function(zoneId)
 
     local zone = GetZone(zoneId)
     for _, npcId in pairs(zoneData.mobs) do
-        print("Despawn mob: " .. npcId .. " in zone: " .. zoneId)
+        debugLogf("Despawn mob: %i in zone: %i", npcId, zoneId)
         DespawnMob(npcId, zone)
     end
+end
 
-    zoneData.mobs = {}
-    zoneData.beastmenSpawned = false
+xi.besieged.setMobSpeed = function(zoneId, speed)
+    local zoneData = xi.besieged.advance.zoneData[zoneId]
+    -- Iterate through all mobs, and jack up their movement speed
+    for _, npcId in pairs(zoneData.mobs) do
+        local mob = GetMobByID(npcId)
+        if mob ~= nil then
+            mob:setSpeed(speed)
+        end
+    end
 end
 
 -----------------------------------
@@ -133,19 +240,21 @@ end
 
 xi.besieged.initZone = function(zone)
     local zoneId = zone:getID()
-    print("Init zone: " .. zoneId)
+    debugLogf("Initializing besieged zone: %i", zoneId)
 
     -- Init empty zone data
-    xi.besieged.zoneData[zoneId] = {
+    xi.besieged.advance.zoneData[zoneId] = {
         beastmenSpawned = false,
+        phaseComplete = false,
         mobs = {},
+        numReachedAlzhabi = 0,
     }
 end
 
 xi.besieged.onZoneTick = function(zone)
     -- If the zone is not a besieged zone, or it has not been initialized,
     -- do nothing
-    if (xi.besieged.zoneData[zone:getID()] == nil) then
+    if (xi.besieged.advance.zoneData[zone:getID()] == nil) then
         return
     end
 

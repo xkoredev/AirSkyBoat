@@ -36,7 +36,43 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
                                    in_addr              from_addr,
                                    uint16               from_port)
 {
-    // TODO: Handle incoming map messages
+    uint8 msgType = payload[1];
+    if (msgType == (uint8)BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED)
+    {
+        bool  intercepted = false;
+        uint8 strongholdId = 0;
+
+        std::memcpy(&intercepted, payload.data() + 2, sizeof(bool));
+        std::memcpy(&strongholdId, payload.data() + 3, sizeof(uint8));
+        DebugBesieged("Message: advance phase ended received for stronghold {}. Intercepted: {}",
+                      strongholdId, 
+                      intercepted);
+
+        if (strongholdId == 0 || strongholdId > 3)
+        {
+            ShowError("Message: invalid stronghold id received from {}:{}",
+                       from_addr.s_addr,
+                       from_port);
+            return false;
+        }
+
+        stronghold_info_t strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
+        if (intercepted)
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
+            strongholdInfo.forces = 0;
+            strongholdInfo.consecutiveDefeats++;
+        } else {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+        }
+
+        this->besiegedData->updateStrongholdInfo(strongholdInfo);
+        this->besiegedData->commit(sql);
+        sendStrongholdInfosMsg();
+
+        return true;
+    }
+
     DebugBesieged(fmt::format("Message: unknown conquest type received from {}:{}",
                               from_addr.s_addr,
                               from_port));
@@ -57,6 +93,20 @@ void BesiegedSystem::updateVanaHourlyBesieged()
 
 void BesiegedSystem::updateBeastmenForces()
 {
+    // Avoid having multiple zones in advance phase
+    // We check before and after updating each stronghold
+    bool oneForceAdvancing = false;
+    for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
+    {
+        auto strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(strongholdId);
+        if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+        {
+            oneForceAdvancing = true;
+            break;
+        }
+    }
+
+    // Iterate through each stronghold and update forces
     for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
     {
         // If not training or preparing, skip this
@@ -81,7 +131,15 @@ void BesiegedSystem::updateBeastmenForces()
 
         if (updatedInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE)
         {
-            handlePreparingPhase(updatedInfo);
+            handlePreparingPhase(updatedInfo, oneForceAdvancing);
+
+            // Note that the order of this race condition resolution
+            // will always be the same. We can live with that.
+            // e.g: Mamook will always advance before Halvung
+            if (updatedInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+            {
+                oneForceAdvancing = true;
+            }
         }
 
         this->besiegedData->updateStrongholdInfo(updatedInfo);
@@ -101,11 +159,15 @@ float BesiegedSystem::getForcesPerTick(stronghold_info_t strongholdInfo) const
     auto minBeastmenPreparingRate = settings::get<float>("main.BESIEGED_MIN_PREPARING_RATE");
     auto perMirrorPrepareRate     = settings::get<float>("main.BESIEGED_PER_MIRROR_PREPARING_RATE");
 
-    if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::TRAIN)
+    // This prevents forces from increasing if a stronghold is already done preparing, but
+    // another stronghold is advancing
+    auto targetPrepareForces      = std::min<uint8>(200, 100 + strongholdInfo.consecutiveDefeats * 10);
+
+    if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::TRAIN && strongholdInfo.forces < 100)
     {
         return std::max(minBeastmenTrainingRate, strongholdInfo.mirrors * perMirrorTrainRate);
     }
-    else if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE)
+    else if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE && strongholdInfo.forces < targetPrepareForces)
     {
         return std::max(minBeastmenPreparingRate, strongholdInfo.mirrors * perMirrorPrepareRate);
     }
@@ -142,12 +204,13 @@ void BesiegedSystem::handleTrainingPhase(stronghold_info_t& strongholdInfo) cons
     DebugBesieged("Stronghold %d: Orders changed to PREPARE. Stronghold Level: %d. Target forces: %d", strongholdInfo.strongholdId, strongholdInfo.strongholdLevel, targetPrepareForces);
 }
 
-void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo) const
+void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo, bool otherStrongholdAdvancing) const
 {
     // If we still haven't reached the target forces, we are still in preparing phase.
+    // If another stronghold is already advancing, we don't want to advance yet
     auto targetPrepareForces = std::min<uint8>(200, 100 + strongholdInfo.consecutiveDefeats * 10);
     DebugBesieged("Stronghold %d: Preparing. Target forces: %d. Current forces: %f", strongholdInfo.strongholdId, targetPrepareForces, strongholdInfo.forces);
-    if (strongholdInfo.forces < targetPrepareForces)
+    if (strongholdInfo.forces < targetPrepareForces || otherStrongholdAdvancing)
     {
         return;
     }
@@ -192,6 +255,28 @@ void BesiegedSystem::sendStrongholdInfosMsg() const
         ref<uint8>((uint8*)data, start + 9)   = strongholdInfos[i].ownsAstralCandescence;
         ref<uint32>((uint8*)data, start + 10) = strongholdInfos[i].consecutiveDefeats;
     }
+
+    // Send to map
+    queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);
+}
+
+void BesiegedSystem::sendAdvancePhaseEndedMsg(BESIEGED_STRONGHOLD strongholdId, bool intercepted) const
+{
+    auto strongholdInfos = this->besiegedData->getStrongholdInfos();
+
+    DebugBesieged("Sending advance phase ended message for stronghold %d. Intercepted: %d", strongholdId, intercepted);
+
+    // Base length is the type + subtype
+    const std::size_t headerLength = 2 * sizeof(uint8);
+    // Data length is the base length + stronghold id + intercepted bool
+    const std::size_t dataLen      = headerLength + sizeof(uint8) + sizeof(bool);
+    const uint8*      data         = new uint8[dataLen];
+
+    // Regional event type + besieged msg type
+    ref<uint8>((uint8*)data, 0) = REGIONAL_EVT_MSG_BESIEGED;
+    ref<uint8>((uint8*)data, 1) = BESIEGED_WORLD2MAP_ADVANCE_PHASE_ENDED;
+    ref<uint8>((uint8*)data, 2) = strongholdId;
+    ref<bool>((uint8*)data, 3)  = intercepted;
 
     // Send to map
     queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);

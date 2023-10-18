@@ -55,7 +55,8 @@ private:
     void  updateBeastmenForces();
     float getForcesPerTick(stronghold_info_t strongholdInfo) const;
     void  handleTrainingPhase(stronghold_info_t& strongholdInfo) const;
-    void  handlePreparingPhase(stronghold_info_t& strongholdInfo) const;
+    void  handlePreparingPhase(stronghold_info_t& strongholdInfo, bool otherStrongholdAdvancing) const;
 
     void sendStrongholdInfosMsg() const;
+    void sendAdvancePhaseEndedMsg(BESIEGED_STRONGHOLD strongholdId, bool intercepted) const;
 };

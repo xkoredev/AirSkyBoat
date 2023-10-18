@@ -1291,8 +1291,8 @@ void CZone::SetTickWhileEmpty(duration time)
     }
 
     // If a task to disable the tick while empty is already scheduled, cancel it
-    if (DisableEmptyTick == nullptr) {
-        CTaskMgr::getInstance()->RemoveTask(m_zoneName + ":disable_always_active");
+    if (DisableEmptyTick != nullptr) {
+        CTaskMgr::getInstance()->RemoveTask(DisableEmptyTick->m_name);
     } else {
         ShowDebug("SetTickWhileEmpty: Zone %s ticking while empty", m_zoneName.c_str());
     }

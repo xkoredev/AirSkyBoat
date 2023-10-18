@@ -13,7 +13,7 @@ require("scripts/globals/besieged")
 cmdprops =
 {
     permission = 1,
-    parameters = "si"
+    parameters = "sii"
 }
 
 function error(player, msg)
@@ -21,7 +21,7 @@ function error(player, msg)
     player:PrintToPlayer(msg .. "\n" .. usage)
 end
 
-function onTrigger(player, command, strongholdId)
+function onTrigger(player, command, strongholdId, speed)
     -- Validate command
     if command == nil then
         error(player, "Invalid command")
@@ -36,11 +36,20 @@ function onTrigger(player, command, strongholdId)
             return
           end
 
-          local zoneId = xi.besieged.waves[strongholdId].zone
+          local zoneId = xi.besieged.advance.waves[strongholdId].zone
           local zone = GetZone(zoneId)
 
           player:PrintToPlayer("Starting besieged in zone: " .. zone:getName(), xi.msg.channel.SYSTEM_2, "")
           xi.besieged.spawnBeastmen(strongholdId, zoneId)
+        end,
+        ["speed"] = function()
+          if not validateStrongholdId(player, strongholdId) then
+            return
+          end
+
+          player:PrintToPlayer("Setting besieged speed in zone: " .. zone:getName() .. " to " .. speed, xi.msg.channel.SYSTEM_2, "")
+          local zoneId = xi.besieged.advance.waves[strongholdId].zone
+          xi.besieged.setMobSpeed(zoneId, speed)
         end,
         ["stop"] = function()
           if not validateStrongholdId(player, strongholdId) then
@@ -48,7 +57,7 @@ function onTrigger(player, command, strongholdId)
           end
 
           player:PrintToPlayer("Stopping besieged in zone: " .. zone:getName(), xi.msg.channel.SYSTEM_2, "")
-          local zoneId = xi.besieged.waves[strongholdId].zone
+          local zoneId = xi.besieged.advance.waves[strongholdId].zone
           xi.besieged.despawnBeastmen(zoneId)
         end,
     }

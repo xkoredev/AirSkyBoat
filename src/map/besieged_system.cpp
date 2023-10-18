@@ -23,6 +23,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "common/settings.h"
 #include "map.h"
+#include "message.h"
 #include "utils/zoneutils.h"
 
 namespace besieged
@@ -30,7 +31,7 @@ namespace besieged
     // Hardcoded map of beastmen stronghold to advance zone id
     static const std::map<BESIEGED_STRONGHOLD, uint16> strongholdToZoneId =
     {
-        { BESIEGED_STRONGHOLD::MAMOOK, 52 },
+        { BESIEGED_STRONGHOLD::MAMOOK, 51 },
         { BESIEGED_STRONGHOLD::HALVUNG, 51 },
         { BESIEGED_STRONGHOLD::ARRAPAGO, 52 },
     };
@@ -74,6 +75,26 @@ namespace besieged
         // due to their besieged state
         DebugBesieged("Initializing Besieged System")
         keepZonesAwakeIfNecessary();
+    }
+
+    /**
+     * Called by map server when a beastmen stronghold advance phase ends.
+     * If intercepted is true, all mobs were killed and the advance phase was intercepted,
+     * otherwise, alzhabi is under attack.
+    */
+    void AdvancePhaseEnded(BESIEGED_STRONGHOLD strongholdId, bool intercepted)
+    {
+        // Send header + strongholdId + intercepted flag
+        const std::size_t dataLen = 2 * sizeof(uint8) + sizeof(uint8) + sizeof(bool);
+        uint8             data[dataLen]{};
+
+        ref<uint8>((uint8*)data, 0) = REGIONAL_EVT_MSG_BESIEGED;
+        ref<uint8>((uint8*)data, 1) = BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED;
+        ref<uint8>((uint8*)data, 2) = strongholdId;
+        ref<bool>((uint8*)data, 3)  = intercepted;
+
+        // Send to world
+        message::send(MSG_MAP2WORLD_REGIONAL_EVENT, data, dataLen);
     }
 
     /**
@@ -128,6 +149,13 @@ namespace besieged
                 }
 
                 HandleStrongholdUpdate(strongholdInfos);
+                break;
+            }
+            case BESIEGED_WORLD2MAP_ADVANCE_PHASE_ENDED:
+            {
+                const std::size_t headerLength = 2 * sizeof(uint8);
+                auto              strongholdId = (BESIEGED_STRONGHOLD)ref<uint8>(data, headerLength);
+                auto              intercepted  = ref<bool>(data, headerLength + sizeof(uint8));
                 break;
             }
             default:

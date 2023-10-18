@@ -3260,6 +3260,11 @@ namespace luautils
             return -1;
         }
 
+        // Trigger the event handler before onPathcomplete lua call,
+        // otherwise this will not be called if the entity doesn't have any
+        // cached function
+        PEntity->PAI->EventHandler.triggerListener("PATH_COMPLETE", CLuaBaseEntity(PEntity));
+
         sol::function onPathComplete = getEntityCachedFunction(PEntity, "onPathComplete");
         if (!onPathComplete.valid())
         {
@@ -5833,6 +5838,11 @@ namespace luautils
     auto GetImperialDefenseLevel() -> uint8
     {
         return besieged::GetBesiegedData()->getImperialDefenseLevel();
+    }
+
+    void BesiegedAdvancePhaseEnded(bool intercepted)
+    {
+        besieged::AdvancePhaseEnded(intercepted);
     }
 
     std::string GetItemNameByID(uint16 const& id)
