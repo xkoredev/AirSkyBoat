@@ -42,15 +42,15 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
         bool  intercepted = false;
         uint8 strongholdId = 0;
 
-        std::memcpy(&intercepted, payload.data() + 2, sizeof(bool));
-        std::memcpy(&strongholdId, payload.data() + 3, sizeof(uint8));
-        DebugBesieged("Message: advance phase ended received for stronghold {}. Intercepted: {}",
+        std::memcpy(&strongholdId, payload.data() + 2, sizeof(uint8));
+        std::memcpy(&intercepted, payload.data() + 3,  sizeof(bool));
+        DebugBesieged("Message: Advance phase ended received for stronghold %d. Intercepted: %d",
                       strongholdId, 
                       intercepted);
 
         if (strongholdId == 0 || strongholdId > 3)
         {
-            ShowError("Message: invalid stronghold id received from {}:{}",
+            ShowError("Message: invalid stronghold id received from %d:%d",
                        from_addr.s_addr,
                        from_port);
             return false;
@@ -62,8 +62,12 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
             strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
             strongholdInfo.forces = 0;
             strongholdInfo.consecutiveDefeats++;
+            DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d", 
+                          strongholdId, 
+                          strongholdInfo.consecutiveDefeats);
         } else {
             strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+            DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
         }
 
         // Update this specific stronghold with the new info
@@ -104,7 +108,7 @@ void BesiegedSystem::updateBeastmenForces()
     for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
     {
         auto strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(strongholdId);
-        if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+        if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE || strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ATTACK)
         {
             oneForceAdvancing = true;
             break;

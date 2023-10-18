@@ -377,7 +377,7 @@ namespace luautils
     auto GetAstralCandescenceOwner() -> uint8;
     auto GetImperialDefenseLevel() -> uint8;
     auto GetBeastmenStrongholdInfo(uint8 strongholdId) -> sol::table;
-    void BesiegedAdvancePhaseEnded(bool intercepted);
+    void BesiegedAdvancePhaseEnded(uint8 strongholdId, bool intercepted);
 
     template <typename... Targs>
     int32 invokeBattlefieldEvent(uint16 battlefieldId, const std::string& eventName, Targs... args)

@@ -103,12 +103,9 @@ local spawnMob = function(npcId, zoneId, strongholdId, pos, path)
         local mobId = mobArg:getID()
         local zone = GetZone(zoneId)
 
+        -- Mark the mob as having reached alzhabi. It will be removed from the table on despawn
         debugLogf("%s (%i) reached Al Zahbi from %s", mobArg:getName(), mobId, zone:getName())
         zoneData.numReachedAlzhabi = zoneData.numReachedAlzhabi + 1
-
-        -- Remove the mob from mobs table
-        local index = utils.find(zoneData.mobs, mobId)
-        table.remove(zoneData.mobs, index)
 
         -- Actually despawn the mob
         DespawnMob(mobId, zone)
@@ -117,14 +114,15 @@ local spawnMob = function(npcId, zoneId, strongholdId, pos, path)
     -- On mob despawn, if that was the last one,
     -- trigger advance phase end
     mob:addListener("DESPAWN", "DESPAWN_BESIEGED", function(mobArg)
-        -- This comment is a bit spammy. Commenting for more fine grained logging
-        -- debugLogf("Mob despawn: %s (%i). Mobs remaining: %i", mobArg:getName(), mobArg:getID(), #zoneData.mobs)
+        -- Remove the mob from mobs table
+        local index = utils.find(zoneData.mobs, mobArg:getID())
+        table.remove(zoneData.mobs, index)
+        debugLogf("Mob despawn: %s (%i). Mobs remaining: %i", mobArg:getName(), mobArg:getID(), #zoneData.mobs)
 
         -- Check if all mobs have arrived or been killed
-        if #zoneData.mobs == 0 and not zoneData.phaseComplete then
+        if #zoneData.mobs == 0 then
             -- Mark phase complete
             debugLog("All mobs despawned. Ending advance phase.")
-            zoneData.phaseComplete = true
 
             -- Either advance to attackin alzhabi or retreat, based on the mobs that have
             -- reached alzhabi
@@ -139,6 +137,10 @@ local spawnMob = function(npcId, zoneId, strongholdId, pos, path)
                 broadcastBesiegedUpdate(3 + strongholdId - 1)
                 debugLog("Advance phase complete. Starting Besieged battle.")
             end
+
+            -- Reset zone data
+            zoneData.beastmenSpawned = false
+            zoneData.numReachedAlzhabi = 0
         end
     end)
 
@@ -239,7 +241,6 @@ xi.besieged.initZone = function(zone)
     -- Init empty zone data
     xi.besieged.advance.zoneData[zoneId] = {
         beastmenSpawned = false,
-        phaseComplete = false,
         mobs = {},
         numReachedAlzhabi = 0,
     }

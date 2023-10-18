@@ -241,6 +241,7 @@ namespace luautils
         lua.set_function("GetBeastmenStrongholdInfo", &luautils::GetBeastmenStrongholdInfo);
         lua.set_function("GetAstralCandescenceOwner", &luautils::GetAstralCandescenceOwner);
         lua.set_function("GetImperialDefenseLevel", &luautils::GetImperialDefenseLevel);
+        lua.set_function("BesiegedAdvancePhaseEnded", &luautils::BesiegedAdvancePhaseEnded);
 
         // This binding specifically exists to forcefully crash the server.
         // clang-format off
@@ -5840,9 +5841,9 @@ namespace luautils
         return besieged::GetBesiegedData()->getImperialDefenseLevel();
     }
 
-    void BesiegedAdvancePhaseEnded(bool intercepted)
+    void BesiegedAdvancePhaseEnded(uint8 strongholdId, bool intercepted)
     {
-        besieged::AdvancePhaseEnded(intercepted);
+        besieged::AdvancePhaseEnded(static_cast<BESIEGED_STRONGHOLD>(strongholdId), intercepted);
     }
 
     std::string GetItemNameByID(uint16 const& id)

@@ -84,6 +84,29 @@ namespace besieged
     */
     void AdvancePhaseEnded(BESIEGED_STRONGHOLD strongholdId, bool intercepted)
     {
+        // Update the besieged data cache. This would also be updated by world response, but doing the update here
+        // maintains a consistent state with the zone lua
+        // NOTE TO REVIEWER: This clode block is exactly the same
+        // as world server counter part.
+        // Map needs to replicate this so that state is consistent when the zone is ticking.
+        // Would besieged_data.h be a good place for this common code? downside is the class is meant
+        // to be data only.
+        auto besiegedData = GetBesiegedData();
+        stronghold_info_t strongholdInfo = besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
+        if (intercepted)
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
+            strongholdInfo.forces = 0;
+            strongholdInfo.consecutiveDefeats++;
+            DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d", 
+                          strongholdId, 
+                          strongholdInfo.consecutiveDefeats);
+        } else {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+            DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
+        }
+        besiegedData->updateStrongholdInfo(strongholdInfo);
+
         // Send header + strongholdId + intercepted flag
         const std::size_t dataLen = 2 * sizeof(uint8) + sizeof(uint8) + sizeof(bool);
         uint8             data[dataLen]{};
@@ -149,13 +172,6 @@ namespace besieged
                 }
 
                 HandleStrongholdUpdate(strongholdInfos);
-                break;
-            }
-            case BESIEGED_WORLD2MAP_ADVANCE_PHASE_ENDED:
-            {
-                const std::size_t headerLength = 2 * sizeof(uint8);
-                auto              strongholdId = (BESIEGED_STRONGHOLD)ref<uint8>(data, headerLength);
-                auto              intercepted  = ref<bool>(data, headerLength + sizeof(uint8));
                 break;
             }
             default:
