@@ -23,29 +23,19 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "message_server.h"
 
-namespace {
-    // Lockless queue used to perform any internal state changes.
-    // This is necessary due to how the class performs operations both on
-    // the time_server the message_server threads.
-    moodycamel::ConcurrentQueue<std::function<void()>> action_queue;
-}
-
-void process_conquest_actions(const bool& requestExit);
-
 /**
  * ConquestSystem both handles messages from map servers and
  * updates the database with the latest conquest data periodically.
  * 
  * This class is guided by the following pattern:
- * - All public methods that may modify the database are enqueued in the action queue.
- * - The action queue is processed in its own thread
- * - Private methods are not guarded via the action queue, but are only called from
- *   public methods, so we can assume that they are always called from the action queue.
+ * - All public methods that may modify the database are enqueued in the task system.
+ * - The task system processes tasks in its own thread
+ * - Private methods are not guarded via the task system, but are only called from
+ *   public methods, so we can assume that they are always called from the task system.
 */
-ConquestSystem::ConquestSystem(const std::atomic_bool& requestExit) : 
-actionQueueThread(std::make_unique<nonstd::jthread>(std::bind(process_conquest_actions, std::ref(requestExit))))
+ConquestSystem::ConquestSystem()
 {
-    action_queue.enqueue([this]()
+    submit([this]()
     {
         sql = std::make_unique<SqlConnection>();
     });
@@ -58,14 +48,14 @@ bool ConquestSystem::handleMessage(const std::vector<uint8>&  payload,
     const uint8 conquestMsgType = payload[1];
     if (conquestMsgType == CONQUESTMSGTYPE::CONQUEST_MAP2WORLD_GM_WEEKLY_UPDATE)
     {
-        // updateWeekConquest already goes through action queue
+        // updateWeekConquest already goes through task system
         updateWeekConquest(); 
         return true;
     }
 
     if (conquestMsgType == CONQUESTMSGTYPE::CONQUEST_MAP2WORLD_ADD_INFLUENCE_POINTS)
     {
-        action_queue.enqueue([this, payload]() 
+        submit([this, payload]()
         { 
             int32  points = 0;
             uint32 nation = 0;
@@ -83,14 +73,15 @@ bool ConquestSystem::handleMessage(const std::vector<uint8>&  payload,
         return true;
     }
 
+
     if (conquestMsgType == CONQUESTMSGTYPE::CONQUEST_MAP2WORLD_GM_CONQUEST_UPDATE)
     {
-        action_queue.enqueue([this, payload, from_addr, from_port]() 
-        { 
-            // Convert from_addr to ip + port
-            uint64 ipp = from_addr.s_addr;
-            ipp |= (((uint64)from_port) << 32);
+        // Convert from_addr to ip + port
+        uint64 ipp = from_addr.s_addr;
+        ipp |= (((uint64)from_port) << 32);
 
+        submit([this, ipp]()
+        {
             // Send influence data to the requesting map server
             sendInfluencesMsg(true, ipp);
         });
@@ -107,7 +98,7 @@ bool ConquestSystem::handleMessage(const std::vector<uint8>&  payload,
 
 void ConquestSystem::updateWeekConquest()
 {
-    action_queue.enqueue([this]() {
+    submit([this]() {
         TracyZoneScoped;
 
         // 1- Notify all zones that tally started
@@ -135,14 +126,14 @@ void ConquestSystem::updateWeekConquest()
 
 void ConquestSystem::updateHourlyConquest()
 {
-    action_queue.enqueue([this]() {
+    submit([this]() {
         sendInfluencesMsg(true);
     });
 }
 
 void ConquestSystem::updateVanaHourlyConquest()
 {
-    action_queue.enqueue([this]() {
+    submit([this]() {
         sendInfluencesMsg(false);
     });
 }
@@ -331,20 +322,4 @@ auto ConquestSystem::getRegionControls() -> std::vector<region_control_t> const
     }
 
     return controllers;
-}
-
-void process_conquest_actions(const bool& requestExit)
-{
-    while (!requestExit)
-    {
-        std::function<void()> action;
-        if (action_queue.try_dequeue(action))
-        {
-            action();
-        }
-        else
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-    }
 }

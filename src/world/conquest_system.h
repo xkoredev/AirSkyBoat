@@ -21,9 +21,6 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #pragma once
 
-#include <concurrentqueue.h>
-#include <nonstd/jthread.hpp>
-
 #include "common/sql.h"
 #include "map/conquest_system.h"
 #include "map/zone.h"
@@ -36,7 +33,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 class ConquestSystem : public IMessageHandler
 {
 public:
-    ConquestSystem(const std::atomic_bool& requestExit);
+    ConquestSystem();
     ~ConquestSystem() override = default;
 
     /**
@@ -67,9 +64,6 @@ public:
 private:
     std::unique_ptr<SqlConnection> sql;
 
-    // Thread used for the action queue operations
-    std::unique_ptr<nonstd::jthread> actionQueueThread;
-    
     bool updateInfluencePoints(int points, unsigned int nation, REGION_TYPE region);
 
     auto getRegionalInfluences() -> std::vector<influence_t> const;

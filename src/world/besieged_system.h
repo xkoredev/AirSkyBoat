@@ -21,9 +21,6 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #pragma once
 
-#include <concurrentqueue.h>
-#include <nonstd/jthread.hpp>
-
 #include "common/cbasetypes.h"
 #include "common/sql.h"
 #include "map/besieged_data.h"
@@ -32,7 +29,7 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 class BesiegedSystem : public IMessageHandler
 {
 public:
-    BesiegedSystem(const std::atomic_bool& requestExit);
+    BesiegedSystem();
     ~BesiegedSystem() override = default;
 
     /**
@@ -52,9 +49,6 @@ private:
     std::unique_ptr<SqlConnection> sql;
     std::unique_ptr<BesiegedData>  besiegedData;
 
-    // Thread used for the action queue operations
-    std::unique_ptr<nonstd::jthread> actionQueueThread;
-    
     // Methods used for beastmen state updates
     void  updateBeastmenForces();
     float getForcesPerTick(stronghold_info_t strongholdInfo) const;

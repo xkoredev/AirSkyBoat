@@ -26,15 +26,6 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "map/besieged_data.h"
 #include "world/message_server.h"
 
-namespace {
-    // Lockless queue used to perform any internal state changes.
-    // This is necessary due to how the class performs operations both on
-    // the time_server the message_server threads.
-    moodycamel::ConcurrentQueue<std::function<void()>> action_queue;
-}
-
-void process_besieged_actions(const bool& requestExit);
-
 /**
  * BesiegedSystem is a class that handles all besieged-related logic.
  * It is responsible for updating the besieged data in the database and
@@ -43,15 +34,14 @@ void process_besieged_actions(const bool& requestExit);
  * besieged data.
  * 
  * This class is guided by the following pattern:
- * - All public methods that may modify the database or the besieged data cache, are enqueued in the action queue.
- * - The action queue is processed in its own thread
- * - Private methods are not guarded via the action queue, but are only called from
- *   public methods, so we can assume that they are always called from the action queue.
+ * - All public methods that may modify the database or the besieged data cache, are enqueued in the task system.
+ * - The task system process actions in its own thread
+ * - Private methods are not guarded via the task system, but are only called from
+ *   public methods, so we can assume that they are always called using the task system.
 */
-BesiegedSystem::BesiegedSystem(const std::atomic_bool& requestExit) : 
-actionQueueThread(std::make_unique<nonstd::jthread>(std::bind(process_besieged_actions, std::ref(requestExit))))
+BesiegedSystem::BesiegedSystem()
 {
-    action_queue.enqueue([this]()
+    submit([this]()
     {
         sql = std::make_unique<SqlConnection>();
         besiegedData = std::make_unique<BesiegedData>(sql);
@@ -61,7 +51,7 @@ actionQueueThread(std::make_unique<nonstd::jthread>(std::bind(process_besieged_a
 /**
  * IMessageHandler implementation. Used to handle messages from message_server.
  * Any changes or internal calls triggered by this method should be done
- * through the action_queue.
+ * through the task system (Async).
  */
 bool BesiegedSystem::handleMessage(const std::vector<uint8>& payload,
                                    in_addr                   from_addr,
@@ -87,7 +77,7 @@ bool BesiegedSystem::handleMessage(const std::vector<uint8>& payload,
             return false;
         }
 
-        action_queue.enqueue([this, strongholdId, intercepted]() 
+        submit([this, strongholdId, intercepted]()
         { 
             stronghold_info_t strongholdInfo = besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
             if (intercepted)
@@ -138,7 +128,7 @@ void BesiegedSystem::updateVanaHourlyBesieged()
         return;
     }
 
-    action_queue.enqueue([this]() 
+    submit([this]()
     { 
         updateBeastmenForces();
         sendStrongholdInfosMsg();
@@ -316,20 +306,4 @@ void BesiegedSystem::sendStrongholdInfosMsg() const
 
     // Send to map
     queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);
-}
-
-void process_besieged_actions(const bool& requestExit)
-{
-    while (!requestExit)
-    {
-        std::function<void()> action;
-        if (action_queue.try_dequeue(action))
-        {
-            action();
-        }
-        else
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-    }
 }
