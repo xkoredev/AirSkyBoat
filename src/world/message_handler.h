@@ -36,11 +36,7 @@ public:
     {
     }
 
-    /*
-     * NOTE: The copy of payload here is intentional, since these systems will eventually
-     *     : be moved to their own threads.
-     */
-    virtual bool handleMessage(std::vector<uint8>&& payload,
-                               in_addr              from_addr,
-                               uint16               from_port) = 0;
+    virtual bool handleMessage(const std::vector<uint8>& payload,
+                               in_addr                   from_addr,
+                               uint16                    from_port) = 0;
 };

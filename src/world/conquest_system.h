@@ -21,6 +21,9 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #pragma once
 
+#include <concurrentqueue.h>
+#include <nonstd/jthread.hpp>
+
 #include "common/sql.h"
 #include "map/conquest_system.h"
 #include "map/zone.h"
@@ -33,17 +36,15 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 class ConquestSystem : public IMessageHandler
 {
 public:
-    ConquestSystem();
+    ConquestSystem(const std::atomic_bool& requestExit);
     ~ConquestSystem() override = default;
 
     /**
      * IMessageHandler implementation. Used to handle messages from message_server.
-     * NOTE: The copy of payload here is intentional, since these systems will eventually
-     *     : be moved to their own threads.
      */
-    bool handleMessage(std::vector<uint8>&& payload,
-                       in_addr              from_addr,
-                       uint16               from_port) override;
+    bool handleMessage(const std::vector<uint8>& payload,
+                       in_addr                   from_addr,
+                       uint16                    from_port) override;
 
     /**
      * Called weekly, updates conquest data and sends regional control information
@@ -66,6 +67,9 @@ public:
 private:
     std::unique_ptr<SqlConnection> sql;
 
+    // Thread used for the action queue operations
+    std::unique_ptr<nonstd::jthread> actionQueueThread;
+    
     bool updateInfluencePoints(int points, unsigned int nation, REGION_TYPE region);
 
     auto getRegionalInfluences() -> std::vector<influence_t> const;

@@ -26,15 +26,46 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "map/besieged_data.h"
 #include "world/message_server.h"
 
-BesiegedSystem::BesiegedSystem()
-: sql(std::make_unique<SqlConnection>())
-, besiegedData(std::make_unique<BesiegedData>(sql))
-{
+namespace {
+    // Lockless queue used to perform any internal state changes.
+    // This is necessary due to how the class performs operations both on
+    // the time_server the message_server threads.
+    moodycamel::ConcurrentQueue<std::function<void()>> action_queue;
 }
 
-bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
-                                   in_addr              from_addr,
-                                   uint16               from_port)
+void process_besieged_actions(const bool& requestExit);
+
+/**
+ * BesiegedSystem is a class that handles all besieged-related logic.
+ * It is responsible for updating the besieged data in the database and
+ * sending besieged data to map servers.
+ * It also handles messages from map servers, which are used to update
+ * besieged data.
+ * 
+ * This class is guided by the following pattern:
+ * - All public methods that may modify the database or the besieged data cache, are enqueued in the action queue.
+ * - The action queue is processed in its own thread
+ * - Private methods are not guarded via the action queue, but are only called from
+ *   public methods, so we can assume that they are always called from the action queue.
+*/
+BesiegedSystem::BesiegedSystem(const std::atomic_bool& requestExit) : 
+actionQueueThread(std::make_unique<nonstd::jthread>(std::bind(process_besieged_actions, std::ref(requestExit))))
+{
+    action_queue.enqueue([this]()
+    {
+        sql = std::make_unique<SqlConnection>();
+        besiegedData = std::make_unique<BesiegedData>(sql);
+    });
+}
+
+/**
+ * IMessageHandler implementation. Used to handle messages from message_server.
+ * Any changes or internal calls triggered by this method should be done
+ * through the action_queue.
+ */
+bool BesiegedSystem::handleMessage(const std::vector<uint8>& payload,
+                                   in_addr                   from_addr,
+                                   uint16                    from_port)
 {
     uint8 msgType = payload[1];
     if (msgType == (uint8)BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED)
@@ -56,31 +87,34 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
             return false;
         }
 
-        stronghold_info_t strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
-        if (intercepted)
-        {
-            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
-            strongholdInfo.forces = 0;
-            strongholdInfo.consecutiveDefeats++;
-            DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d", 
-                          strongholdId, 
-                          strongholdInfo.consecutiveDefeats);
-        } else {
-            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
-            DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
-        }
+        action_queue.enqueue([this, strongholdId, intercepted]() 
+        { 
+            stronghold_info_t strongholdInfo = besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
+            if (intercepted)
+            {
+                strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
+                strongholdInfo.forces = 0;
+                strongholdInfo.consecutiveDefeats++;
+                DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d", 
+                            strongholdId, 
+                            strongholdInfo.consecutiveDefeats);
+            } else {
+                strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+                DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
+            }
 
-        // Update this specific stronghold with the new info
-        this->besiegedData->updateStrongholdInfo(strongholdInfo);
+            // Update this specific stronghold with the new info
+            besiegedData->updateStrongholdInfo(strongholdInfo);
 
-        // This forces a "tick" immediately after forces change state, since
-        // force A retreating may cause force B to start advancing
-        // This also causes an sql commit of the current cache, which is why we don't
-        // explicitly do so after updating the stronghold info in the cache
-        updateBeastmenForces();
-        // After our state is up to date, send an update message as we would with 
-        // a regular tick
-        sendStrongholdInfosMsg();
+            // This forces a "tick" immediately after forces change state, since
+            // force A retreating may cause force B to start advancing
+            // This also causes an sql commit of the current cache, which is why we don't
+            // explicitly do so after updating the stronghold info in the cache
+            updateBeastmenForces();
+            // After our state is up to date, send an update message as we would with 
+            // a regular tick
+            sendStrongholdInfosMsg();
+        });
 
         return true;
     }
@@ -92,6 +126,11 @@ bool BesiegedSystem::handleMessage(std::vector<uint8>&& payload,
     return false;
 }
 
+/**
+ * Called every vana hour (every 2.4 min). Used to send updated stronghold data.
+ * Any changes or internal calls triggered by this method should be done
+ * through the action_queue.
+*/
 void BesiegedSystem::updateVanaHourlyBesieged()
 {
     if (!settings::get<bool>("main.BESIEGED_ENABLED"))
@@ -99,8 +138,11 @@ void BesiegedSystem::updateVanaHourlyBesieged()
         return;
     }
 
-    updateBeastmenForces();
-    sendStrongholdInfosMsg();
+    action_queue.enqueue([this]() 
+    { 
+        updateBeastmenForces();
+        sendStrongholdInfosMsg();
+    });
 }
 
 void BesiegedSystem::updateBeastmenForces()
@@ -274,4 +316,20 @@ void BesiegedSystem::sendStrongholdInfosMsg() const
 
     // Send to map
     queue_data_broadcast(MSG_WORLD2MAP_REGIONAL_EVENT, data, dataLen);
+}
+
+void process_besieged_actions(const bool& requestExit)
+{
+    while (!requestExit)
+    {
+        std::function<void()> action;
+        if (action_queue.try_dequeue(action))
+        {
+            action();
+        }
+        else
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
 }
