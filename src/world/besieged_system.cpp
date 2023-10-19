@@ -110,7 +110,7 @@ void BesiegedSystem::updateBeastmenForces()
     bool oneForceAdvancing = false;
     for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
     {
-        auto strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(strongholdId);
+        auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
         if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE || strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ATTACK)
         {
             oneForceAdvancing = true;
@@ -122,7 +122,7 @@ void BesiegedSystem::updateBeastmenForces()
     for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
     {
         // If not training or preparing, skip this
-        auto strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(strongholdId);
+        auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
         if (strongholdInfo.orders != BEASTMEN_BESIEGED_ORDERS::TRAIN &&
             strongholdInfo.orders != BEASTMEN_BESIEGED_ORDERS::PREPARE)
         {
@@ -237,10 +237,10 @@ void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo, boo
 
 void BesiegedSystem::sendStrongholdInfosMsg() const
 {
-    auto strongholdInfos = this->besiegedData->getStrongholdInfos();
+    auto strongholdInfos = besiegedData->getStrongholdInfos();
 
     DebugBesieged("Sending besieged Stronghold Data:");
-    for (auto line : this->besiegedData->getFormattedData())
+    for (auto line : besiegedData->getFormattedData())
     {
         DebugBesieged(line);
     }
