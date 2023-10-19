@@ -154,9 +154,13 @@ void BesiegedSystem::updateBeastmenForces()
             }
         }
 
-        this->besiegedData->updateStrongholdInfo(updatedInfo);
-        this->besiegedData->commit(sql);
+        besiegedData->updateStrongholdInfo(updatedInfo);
     }
+
+    // Now commit the changes to the database
+    // Fine to not avoid committing if we didn't change anything. It's a small table and
+    // most likely there will be changes every tick
+    besiegedData->commit(sql);
 }
 
 float BesiegedSystem::getForcesPerTick(stronghold_info_t strongholdInfo) const
