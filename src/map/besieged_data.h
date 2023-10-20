@@ -197,7 +197,7 @@ public:
      */
     void updateStrongholdInfo(stronghold_info_t const& strongholdInfo)
     {
-        if (strongholdInfo.strongholdId >= strongholdInfos.size())
+        if ((size_t)strongholdInfo.strongholdId >= strongholdInfos.size())
         {
             ShowError("updateStrongholdInfo() called with invalid stronghold id %d", strongholdInfo.strongholdId);
             throw std::runtime_error("Besieged stronghold id out of range");
