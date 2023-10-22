@@ -47,6 +47,6 @@ public:
     /**
      * Handles an incoming message from a map server.
      * Return true if the message was handled, false otherwise.
-    */
+     */
     virtual bool handleMessage(HandleableMessage&& message) = 0;
 };
