@@ -2,6 +2,7 @@
 -- Zone: Wajaom_Woodlands (51)
 -----------------------------------
 local ID = require('scripts/zones/Wajaom_Woodlands/IDs')
+require('scripts/globals/besieged')
 require('scripts/globals/chocobo_digging')
 require('scripts/globals/chocobo')
 require('scripts/globals/helm')
@@ -16,6 +17,11 @@ end
 zoneObject.onInitialize = function(zone)
     xi.helm.initZone(zone, xi.helm.type.HARVESTING)
     xi.chocobo.initZone(zone)
+    xi.besieged.initZone(zone)
+end
+
+zoneObject.onZoneTick = function(zone)
+    xi.besieged.onZoneTick(zone)
 end
 
 zoneObject.onZoneIn = function(player, prevZone)

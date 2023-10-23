@@ -712,7 +712,8 @@ public:
     virtual void UpdateCharPacket(CCharEntity* PChar, ENTITYUPDATE type, uint8 updatemask);
     virtual void UpdateEntityPacket(CBaseEntity* PEntity, ENTITYUPDATE type, uint8 updatemask, bool alwaysInclude = false);
 
-    bool           IsZoneActive() const;
+    void           SetTickWhileEmpty(duration time); // Set the zone to tick for a certain amount of time, even if there are no players in it
+    bool           IsZoneActive() const;             // If true, the zone is active (has players in it or is set to tick while empty)
     CZoneEntities* GetZoneEntities();
 
     weatherVector_t m_WeatherVector; // the probability of each weather type
@@ -791,7 +792,8 @@ private:
 
     static const uint16 ReducedVerticalAggroZones[];
 
-    time_point m_timeZoneEmpty; // The time_point when the last player left the zone
+    time_point m_timeZoneEmpty;  // The time_point when the last player left the zone
+    bool       m_tickWhileEmpty; // If true, the zone tick method will be called even if no players are in it
 
     uint8  m_ZoneDirection;     // which direction for transport to travel (0 or 4)
     uint8  m_ZoneAnimation;     // which zone animation to use (i.e. manaclipper)
@@ -801,10 +803,12 @@ private:
     std::unordered_map<std::string, QueryByNameResult_t> m_queryByNameResults;
 
 protected:
-    CTaskMgr::CTask* ZoneTimer;             // The pointer to the created timer is Zoneserver.necessary for the possibility of stopping it
-    CTaskMgr::CTask* ZoneTimerTriggerAreas; //
+    CTaskMgr::CTask* ZoneTimer;             // Task running zone tick
+    CTaskMgr::CTask* ZoneTimerTriggerAreas; // Task running tick for trigger areas
+    CTaskMgr::CTask* DisableEmptyTick;      // Task used to disable the m_tickWhileEmpty flag after certain time
 
     void createZoneTimers();
+    void disableAlwaysActive(time_point tick, CTaskMgr::CTask* PTask);
     void CharZoneIn(CCharEntity* PChar);
     void CharZoneOut(CCharEntity* PChar);
 

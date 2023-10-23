@@ -24,6 +24,7 @@ zones[xi.zone.MAMOOK] =
         PARTY_MEMBERS_HAVE_FALLEN     = 7899, -- All party members have fallen in battle. Now leaving the battlefield.
         THE_PARTY_WILL_BE_REMOVED     = 7906, -- If all party members' HP are still zero after # minute[/s], the party will be removed from the battlefield.
         IMPENDING_BATTLE              = 8054, -- You feel the rush of impending battle!
+        BESIEGED_UPDATES_BASE         = 8120, -- The Mamool Ja Savages are on the move. Intercept their forces in the Wajaom Woodlands!
         NUMEROUS_STRANDS              = 8651, -- Numerous strands of hair are scattered all over...
         SICKLY_SWEET                  = 8653, -- A sickly sweet fragrance pervades the air...
         DRAWS_NEAR                    = 8675, -- Something draws near!

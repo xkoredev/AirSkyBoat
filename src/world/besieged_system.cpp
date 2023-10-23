@@ -26,6 +26,13 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 #include "map/besieged_data.h"
 #include "world/message_server.h"
 
+/**
+ * BesiegedSystem is a class that handles all besieged-related logic.
+ * It is responsible for updating the besieged data in the database and
+ * sending besieged data to map servers.
+ * It also handles messages from map servers, which are used to update
+ * besieged data.
+ */
 BesiegedSystem::BesiegedSystem()
 : sql(std::make_unique<SqlConnection>())
 , besiegedData(std::make_unique<BesiegedData>(sql))
@@ -34,7 +41,57 @@ BesiegedSystem::BesiegedSystem()
 
 bool BesiegedSystem::handleMessage(HandleableMessage&& message)
 {
-    // TODO: Handle incoming map messages
+    uint8 msgType = message.payload[1];
+    if (msgType == (uint8)BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED)
+    {
+        bool  intercepted  = false;
+        uint8 strongholdId = 0;
+
+        std::memcpy(&strongholdId, message.payload.data() + 2, sizeof(uint8));
+        std::memcpy(&intercepted, message.payload.data() + 3, sizeof(bool));
+        DebugBesieged("Message: Advance phase ended received for stronghold %d. Intercepted: %d",
+                      strongholdId,
+                      intercepted);
+
+        if (strongholdId == 0 || strongholdId > 3)
+        {
+            ShowError("Message: invalid stronghold id received from %d:%d",
+                      message.from_addr.s_addr,
+                      message.from_port);
+            return false;
+        }
+
+        stronghold_info_t strongholdInfo = besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
+        if (intercepted)
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
+            strongholdInfo.forces = 0;
+            strongholdInfo.consecutiveDefeats++;
+            DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d",
+                          strongholdId,
+                          strongholdInfo.consecutiveDefeats);
+        }
+        else
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+            DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
+        }
+
+        // Update this specific stronghold with the new info
+        besiegedData->updateStrongholdInfo(strongholdInfo);
+
+        // This forces a "tick" immediately after forces change state, since
+        // force A retreating may cause force B to start advancing
+        // This also causes an sql commit of the current cache, which is why we don't
+        // explicitly do so after updating the stronghold info in the cache
+        updateBeastmenForces();
+        // After our state is up to date, send an update message as we would with
+        // a regular tick
+        sendStrongholdInfosMsg();
+
+        return true;
+    }
+
     DebugBesieged(fmt::format("Message: unknown conquest type received from {}:{}",
                               message.from_addr.s_addr,
                               message.from_port));
@@ -42,6 +99,11 @@ bool BesiegedSystem::handleMessage(HandleableMessage&& message)
     return false;
 }
 
+/**
+ * Called every vana hour (every 2.4 min). Used to send updated stronghold data.
+ * Any changes or internal calls triggered by this method should be done
+ * through the action_queue.
+ */
 void BesiegedSystem::updateVanaHourlyBesieged()
 {
     if (!settings::get<bool>("main.BESIEGED_ENABLED"))
@@ -55,10 +117,24 @@ void BesiegedSystem::updateVanaHourlyBesieged()
 
 void BesiegedSystem::updateBeastmenForces()
 {
+    // Avoid having multiple zones in advance phase
+    // We check before and after updating each stronghold
+    bool oneForceAdvancing = false;
+    for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
+    {
+        auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
+        if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE || strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ATTACK)
+        {
+            oneForceAdvancing = true;
+            break;
+        }
+    }
+
+    // Iterate through each stronghold and update forces
     for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
     {
         // If not training or preparing, skip this
-        auto strongholdInfo = this->besiegedData->getBeastmenStrongholdInfo(strongholdId);
+        auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
         if (strongholdInfo.orders != BEASTMEN_BESIEGED_ORDERS::TRAIN &&
             strongholdInfo.orders != BEASTMEN_BESIEGED_ORDERS::PREPARE)
         {
@@ -79,12 +155,24 @@ void BesiegedSystem::updateBeastmenForces()
 
         if (updatedInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE)
         {
-            handlePreparingPhase(updatedInfo);
+            handlePreparingPhase(updatedInfo, oneForceAdvancing);
+
+            // Note that the order of this race condition resolution
+            // will always be the same. We can live with that.
+            // e.g: Mamook will always advance before Halvung
+            if (updatedInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+            {
+                oneForceAdvancing = true;
+            }
         }
 
-        this->besiegedData->updateStrongholdInfo(updatedInfo);
-        this->besiegedData->commit(sql);
+        besiegedData->updateStrongholdInfo(updatedInfo);
     }
+
+    // Now commit the changes to the database
+    // Fine to not avoid committing if we didn't change anything. It's a small table and
+    // most likely there will be changes every tick
+    besiegedData->commit(sql);
 }
 
 float BesiegedSystem::getForcesPerTick(stronghold_info_t strongholdInfo) const
@@ -99,11 +187,15 @@ float BesiegedSystem::getForcesPerTick(stronghold_info_t strongholdInfo) const
     auto minBeastmenPreparingRate = settings::get<float>("main.BESIEGED_MIN_PREPARING_RATE");
     auto perMirrorPrepareRate     = settings::get<float>("main.BESIEGED_PER_MIRROR_PREPARING_RATE");
 
-    if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::TRAIN)
+    // This prevents forces from increasing if a stronghold is already done preparing, but
+    // another stronghold is advancing
+    auto targetPrepareForces = std::min<uint8>(200, 100 + strongholdInfo.consecutiveDefeats * 10);
+
+    if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::TRAIN && strongholdInfo.forces < 100)
     {
         return std::max(minBeastmenTrainingRate, strongholdInfo.mirrors * perMirrorTrainRate);
     }
-    else if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE)
+    else if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::PREPARE && strongholdInfo.forces < targetPrepareForces)
     {
         return std::max(minBeastmenPreparingRate, strongholdInfo.mirrors * perMirrorPrepareRate);
     }
@@ -140,12 +232,13 @@ void BesiegedSystem::handleTrainingPhase(stronghold_info_t& strongholdInfo) cons
     DebugBesieged("Stronghold %d: Orders changed to PREPARE. Stronghold Level: %d. Target forces: %d", strongholdInfo.strongholdId, strongholdInfo.strongholdLevel, targetPrepareForces);
 }
 
-void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo) const
+void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo, bool otherStrongholdAdvancing) const
 {
     // If we still haven't reached the target forces, we are still in preparing phase.
+    // If another stronghold is already advancing, we don't want to advance yet
     auto targetPrepareForces = std::min<uint8>(200, 100 + strongholdInfo.consecutiveDefeats * 10);
     DebugBesieged("Stronghold %d: Preparing. Target forces: %d. Current forces: %f", strongholdInfo.strongholdId, targetPrepareForces, strongholdInfo.forces);
-    if (strongholdInfo.forces < targetPrepareForces)
+    if (strongholdInfo.forces < targetPrepareForces || otherStrongholdAdvancing)
     {
         return;
     }
@@ -156,10 +249,10 @@ void BesiegedSystem::handlePreparingPhase(stronghold_info_t& strongholdInfo) con
 
 void BesiegedSystem::sendStrongholdInfosMsg() const
 {
-    auto strongholdInfos = this->besiegedData->getStrongholdInfos();
+    auto strongholdInfos = besiegedData->getStrongholdInfos();
 
     DebugBesieged("Sending besieged Stronghold Data:");
-    for (auto line : this->besiegedData->getFormattedData())
+    for (auto line : besiegedData->getFormattedData())
     {
         DebugBesieged(line);
     }

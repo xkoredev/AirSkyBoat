@@ -23,9 +23,18 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "common/settings.h"
 #include "map.h"
+#include "message.h"
+#include "utils/zoneutils.h"
 
 namespace besieged
 {
+    // Hardcoded map of beastmen stronghold to advance zone id
+    static const std::map<BESIEGED_STRONGHOLD, uint16> strongholdToZoneId = {
+        { BESIEGED_STRONGHOLD::MAMOOK, 51 },
+        { BESIEGED_STRONGHOLD::HALVUNG, 51 },
+        { BESIEGED_STRONGHOLD::ARRAPAGO, 52 },
+    };
+
     static std::shared_ptr<BesiegedData> besiegedData;
 
     std::shared_ptr<BesiegedData> GetBesiegedData()
@@ -38,6 +47,80 @@ namespace besieged
         return besiegedData;
     }
 
+    void keepZonesAwakeIfNecessary()
+    {
+        auto besiegedData = GetBesiegedData();
+        for (auto strongholdId : { BESIEGED_STRONGHOLD::MAMOOK, BESIEGED_STRONGHOLD::HALVUNG, BESIEGED_STRONGHOLD::ARRAPAGO })
+        {
+            auto strongholdInfo = besiegedData->getBeastmenStrongholdInfo(strongholdId);
+            if (strongholdInfo.orders == BEASTMEN_BESIEGED_ORDERS::ADVANCE)
+            {
+                // Keep the respective besieged zone awake for 5 minutes.
+                // This is more than enough since we continue to keep zones awake
+                // as long as world sends messages that the stronghold is in advance phase.
+                auto zoneId   = strongholdToZoneId.at(strongholdId);
+                auto duration = std::chrono::minutes(5);
+                zoneutils::GetZone(zoneId)->SetTickWhileEmpty(duration);
+            }
+        }
+    }
+
+    /**
+     * Should be called on map initialization
+     */
+    void init()
+    {
+        // With initial data, check if any zones need to be kept active
+        // due to their besieged state
+        DebugBesieged("Initializing Besieged System")
+            keepZonesAwakeIfNecessary();
+    }
+
+    /**
+     * Called by map server when a beastmen stronghold advance phase ends.
+     * If intercepted is true, all mobs were killed and the advance phase was intercepted,
+     * otherwise, alzhabi is under attack.
+     */
+    void AdvancePhaseEnded(BESIEGED_STRONGHOLD strongholdId, bool intercepted)
+    {
+        // Update the besieged data cache. This would also be updated by world response, but doing the update here
+        // maintains a consistent state with the zone lua
+        // NOTE TO REVIEWER: This clode block is exactly the same
+        // as world server counter part.
+        // Map needs to replicate this so that state is consistent when the zone is ticking.
+        // Would besieged_data.h be a good place for this common code? downside is the class is meant
+        // to be data only.
+        auto              besiegedData   = GetBesiegedData();
+        stronghold_info_t strongholdInfo = besiegedData->getBeastmenStrongholdInfo(static_cast<BESIEGED_STRONGHOLD>(strongholdId));
+        if (intercepted)
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::RETREAT;
+            strongholdInfo.forces = 0;
+            strongholdInfo.consecutiveDefeats++;
+            DebugBesieged("Stronghold: %d retreats before arriving to Alzhabi. Consecutive defeats: %d",
+                          strongholdId,
+                          strongholdInfo.consecutiveDefeats);
+        }
+        else
+        {
+            strongholdInfo.orders = BEASTMEN_BESIEGED_ORDERS::ATTACK;
+            DebugBesieged("Stronghold: %d arrives to Alzhabi. Orders changed to ATTACK", strongholdId);
+        }
+        besiegedData->updateStrongholdInfo(strongholdInfo);
+
+        // Send header + strongholdId + intercepted flag
+        const std::size_t dataLen = 2 * sizeof(uint8) + sizeof(uint8) + sizeof(bool);
+        uint8             data[dataLen]{};
+
+        ref<uint8>((uint8*)data, 0) = REGIONAL_EVT_MSG_BESIEGED;
+        ref<uint8>((uint8*)data, 1) = BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED;
+        ref<uint8>((uint8*)data, 2) = strongholdId;
+        ref<bool>((uint8*)data, 3)  = intercepted;
+
+        // Send to world
+        message::send(MSG_MAP2WORLD_REGIONAL_EVENT, data, dataLen);
+    }
+
     /**
      * Called when stronghold updates are received from the world server
      */
@@ -45,8 +128,12 @@ namespace besieged
     {
         TracyZoneScoped;
 
+        // Update the besieged data cache
         auto besiegedData = GetBesiegedData();
         besiegedData->updateStrongholdInfos(strongHoldInfos);
+
+        // Any zones that are in advance phase should be kept awake
+        keepZonesAwakeIfNecessary();
 
         DebugBesieged("Received besieged Stronghold Data:");
         for (auto line : besiegedData->getFormattedData())

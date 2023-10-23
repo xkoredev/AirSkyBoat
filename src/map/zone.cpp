@@ -108,6 +108,11 @@ int32 zone_update_weather(time_point tick, CTaskMgr::CTask* PTask)
     return 0;
 }
 
+int32 disable_always_active(time_point tick, CTaskMgr::CTask* PTask)
+{
+    return 0;
+}
+
 const uint16 CZone::ReducedVerticalAggroZones[] = {
     ZONE_KING_RANPERRES_TOMB,
     ZONE_BEADEAUX,
@@ -133,6 +138,7 @@ CZone::CZone(ZONEID ZoneID, REGION_TYPE RegionID, CONTINENT_TYPE ContinentID, ui
 , m_regionID(RegionID)
 , m_continentID(ContinentID)
 , m_levelRestriction(levelRestriction)
+, m_tickWhileEmpty(false)
 {
     TracyZoneScoped;
 
@@ -957,8 +963,14 @@ void CZone::ZoneServer(time_point tick)
         m_BattlefieldHandler->HandleBattlefields(tick);
     }
 
-    if (ZoneTimer && m_zoneEntities->CharListEmpty() && m_timeZoneEmpty + 300s < server_clock::now())
+    // If the zone is empty and the zone timer is still running, stop it,
+    // unless the zone is configured to tick while empty
+    if (ZoneTimer &&
+        m_zoneEntities->CharListEmpty() &&
+        !m_tickWhileEmpty &&
+        m_timeZoneEmpty + 300s < server_clock::now())
     {
+        ShowDebug("ZoneServer: Zone %s is empty, stopping zone timer", m_zoneName.c_str());
         ZoneTimer->m_type = CTaskMgr::TASK_REMOVE;
         ZoneTimer         = nullptr;
 
@@ -1268,6 +1280,38 @@ void CZone::CharZoneOut(CCharEntity* PChar)
 
     charutils::WriteHistory(PChar);
     charutils::WriteFishingHistory(PChar);
+}
+
+void CZone::SetTickWhileEmpty(duration time)
+{
+    if (!IsZoneActive())
+    {
+        ShowDebug("SetTickWhileEmpty: Zone %s is not active, activating", m_zoneName.c_str());
+        createZoneTimers();
+    }
+
+    // If a task to disable the tick while empty is already scheduled, cancel it
+    if (DisableEmptyTick != nullptr)
+    {
+        CTaskMgr::getInstance()->RemoveTask(DisableEmptyTick->m_name);
+    }
+    else
+    {
+        ShowDebug("SetTickWhileEmpty: Zone %s ticking while empty", m_zoneName.c_str());
+    }
+
+    m_tickWhileEmpty = true;
+    DisableEmptyTick = CTaskMgr::getInstance()->AddTask(m_zoneName + ":disable_always_active",
+                                                        server_clock::now() + time, this, CTaskMgr::TASK_ONCE,
+                                                        [](time_point tick, CTaskMgr::CTask* PTask) -> int32
+                                                        {
+                                                            CZone* PZone            = std::any_cast<CZone*>(PTask->m_data);
+                                                            PZone->DisableEmptyTick = nullptr;
+                                                            PZone->m_tickWhileEmpty = false;
+                                                            ShowDebug("SetTickWhileEmpty: Zone %s is no longer ticking while empty", PZone->m_zoneName.c_str());
+
+                                                            return 0;
+                                                        });
 }
 
 bool CZone::IsZoneActive() const

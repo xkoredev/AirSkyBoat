@@ -97,6 +97,17 @@ function utils.join(input1, input2)
     return result
 end
 
+-- Returns the index of the given element in the given table, or -1 if not found
+function utils.find(table, element)
+    for k, v in pairs(table) do
+        if v == element then
+            return k
+        end
+    end
+
+    return -1
+end
+
 function utils.minutes(minutes)
     return minutes * 60
 end

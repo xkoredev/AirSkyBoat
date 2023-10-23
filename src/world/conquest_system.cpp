@@ -23,6 +23,10 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 #include "message_server.h"
 
+/**
+ * ConquestSystem both handles messages from map servers and
+ * updates the database with the latest conquest data periodically.
+ */
 ConquestSystem::ConquestSystem()
 : sql(std::make_unique<SqlConnection>())
 {
@@ -78,6 +82,42 @@ bool ConquestSystem::handleMessage(HandleableMessage&& message)
     }
 
     return false;
+}
+
+void ConquestSystem::updateWeekConquest()
+{
+    TracyZoneScoped;
+
+    // 1- Notify all zones that tally started
+    sendTallyStartMsg();
+
+    // 2- Do the actual db update
+    const char* Query = "UPDATE conquest_system SET region_control = \
+                            IF(sandoria_influence > bastok_influence AND sandoria_influence > windurst_influence AND \
+                            sandoria_influence > beastmen_influence, 0, \
+                            IF(bastok_influence > sandoria_influence AND bastok_influence > windurst_influence AND \
+                            bastok_influence > beastmen_influence, 1, \
+                            IF(windurst_influence > bastok_influence AND windurst_influence > sandoria_influence AND \
+                            windurst_influence > beastmen_influence, 2, 3)));";
+
+    int ret = sql->Query(Query);
+    if (ret == SQL_ERROR)
+    {
+        ShowError("handleWeeklyUpdate() failed");
+    }
+
+    // 3- Send tally end Msg
+    sendRegionControlsMsg(CONQUEST_WORLD2MAP_WEEKLY_UPDATE_END);
+}
+
+void ConquestSystem::updateHourlyConquest()
+{
+    sendInfluencesMsg(true);
+}
+
+void ConquestSystem::updateVanaHourlyConquest()
+{
+    sendInfluencesMsg(false);
 }
 
 void ConquestSystem::sendTallyStartMsg()
@@ -220,42 +260,6 @@ bool ConquestSystem::updateInfluencePoints(int points, unsigned int nation, REGI
                      influences[0], influences[1], influences[2], influences[3], static_cast<uint8>(region));
 
     return ret != SQL_ERROR;
-}
-
-void ConquestSystem::updateWeekConquest()
-{
-    TracyZoneScoped;
-
-    // 1- Notify all zones that tally started
-    sendTallyStartMsg();
-
-    // 2- Do the actual db update
-    const char* Query = "UPDATE conquest_system SET region_control = \
-                            IF(sandoria_influence > bastok_influence AND sandoria_influence > windurst_influence AND \
-                            sandoria_influence > beastmen_influence, 0, \
-                            IF(bastok_influence > sandoria_influence AND bastok_influence > windurst_influence AND \
-                            bastok_influence > beastmen_influence, 1, \
-                            IF(windurst_influence > bastok_influence AND windurst_influence > sandoria_influence AND \
-                            windurst_influence > beastmen_influence, 2, 3)));";
-
-    int ret = sql->Query(Query);
-    if (ret == SQL_ERROR)
-    {
-        ShowError("handleWeeklyUpdate() failed");
-    }
-
-    // 3- Send tally end Msg
-    sendRegionControlsMsg(CONQUEST_WORLD2MAP_WEEKLY_UPDATE_END);
-}
-
-void ConquestSystem::updateHourlyConquest()
-{
-    sendInfluencesMsg(true);
-}
-
-void ConquestSystem::updateVanaHourlyConquest()
-{
-    sendInfluencesMsg(false);
 }
 
 auto ConquestSystem::getRegionalInfluences() -> std::vector<influence_t> const

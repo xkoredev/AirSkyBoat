@@ -37,6 +37,15 @@ struct HandleableMessage
 #include <netinet/in.h>
 #endif
 
+/**
+ * Class responsible for handling messages recieved from the message server.
+ *
+ * Implementations of this class are responsible for queueing any work
+ * that affects internal state / sql queries via the given task system, using
+ * the submit() method.
+ *
+ * This is done to ensure thread-safety outside of the message_server thread.
+ */
 class IMessageHandler
 {
 public:

@@ -207,8 +207,9 @@ enum BESIEGEDMSGTYPE : uint8
     BESIEGED_WORLD2MAP_STRONGHOLD_INFO,
 
     // MAP ----------> WORLD
-
-    // TODO: Fill up Map 2 World Messages
+    // Map tells world that a stronghold advance phase has ended, sending
+    // along the result of the phase (intercepted or not).
+    BESIEGED_MAP2WORLD_ADVANCE_PHASE_ENDED,
 };
 
 constexpr auto msgTypeToStr = [](uint8 msgtype)

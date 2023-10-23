@@ -144,7 +144,7 @@ quest.sections =
                 [825] = function(player, csid, option, npc)
                     if quest:complete(player) then
                         player:addCurrency("imperial_standing", 1000)
-                        player:messageSpecial(zones[player:getZoneID()].text.BESIEGED_OFFSET)
+                        player:messageSpecial(zones[player:getZoneID()].text.SANCTION_NPC_OFFSET)
                     end
                 end,
             },

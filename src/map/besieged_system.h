@@ -25,7 +25,9 @@ along with this program.  If not, see http://www.gnu.org/licenses/
 
 namespace besieged
 {
-    std::shared_ptr<BesiegedData> GetBesiegedData(); // Cached data with besieged map info
+    void init(); // Must be called on map initialization. Checks for zones that may be affected by besieged state.
 
-    void HandleZMQMessage(uint8* data); // Called whenever a ZMQ message is recieved from world server
+    std::shared_ptr<BesiegedData> GetBesiegedData();                                                     // Cached data with besieged map info
+    void                          AdvancePhaseEnded(BESIEGED_STRONGHOLD strongholdId, bool intercepted); // Called by map server when a beastmen stronghold advance phase ends
+    void                          HandleZMQMessage(uint8* data);                                         // Called whenever a ZMQ message is recieved from world server
 } // namespace besieged
